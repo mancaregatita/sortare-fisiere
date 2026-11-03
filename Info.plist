@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Sortator mută automat fișierele noi din Descărcări în subfoldere, după regulile tale.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Sortator mută automat fișierele noi de pe Desktop în subfoldere, după regulile tale.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Sortator mută automat fișierele noi din Documente în subfoldere, după regulile tale.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Sortator poate urmări foldere de pe discuri externe, dacă le alegi.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Sortator poate urmări foldere din rețea, dacă le alegi.</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/mancaregatita/sortare-fisiere/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>GV3wkZj4qQGWpwmuy8BmpHosb7KkJ9em8oUw4U9i5ZU=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>21600</integer>
+</dict>
+</plist>

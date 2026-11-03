@@ -60,9 +60,6 @@ struct MenuContent: View {
         Button("Istoric mutări…") {
             state.showMainWindow(tab: .history)
         }
-        Button("Caută actualizări…") {
-            Updates.shared.checkNow()
-        }
         Divider()
         Button("Ieșire din Sortator") {
             NSApp.terminate(nil)

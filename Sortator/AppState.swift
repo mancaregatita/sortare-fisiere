@@ -74,7 +74,6 @@ final class AppState: ObservableObject {
         }
 
         Self.quitOtherInstances()
-        _ = Updates.shared
 
         engine.onMoved = { entry in
             Task { @MainActor in AppState.shared.recordMove(entry) }

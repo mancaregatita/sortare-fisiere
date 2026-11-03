@@ -65,16 +65,6 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Actualizări") {
-                HStack {
-                    Text("\(Updates.shared.versionText). Versiunile noi se instalează singure, în fundal.")
-                    Spacer()
-                    Button("Caută acum") {
-                        Updates.shared.checkNow()
-                    }
-                }
-            }
-
             Section("Date") {
                 HStack {
                     Text("Setările, regulile și istoricul sunt în Application Support/Sortator.")

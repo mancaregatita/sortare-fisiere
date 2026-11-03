@@ -14,15 +14,5 @@
 	<string>Sortator poate urmări foldere de pe discuri externe, dacă le alegi.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
 	<string>Sortator poate urmări foldere din rețea, dacă le alegi.</string>
-	<key>SUFeedURL</key>
-	<string>https://github.com/mancaregatita/sortare-fisiere/releases/latest/download/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>GV3wkZj4qQGWpwmuy8BmpHosb7KkJ9em8oUw4U9i5ZU=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUAutomaticallyUpdate</key>
-	<true/>
-	<key>SUScheduledCheckInterval</key>
-	<integer>21600</integer>
 </dict>
 </plist>

@@ -288,6 +288,85 @@ final class SortEngine {
         }
     }
 
+    /// Folderele în care Sortator pune documente redenumite: partea fixă a destinației regulilor
+    /// cu redenumire (ex. „Firme/ROSICO PRIM/{tipdoc}” → „Firme/ROSICO PRIM”).
+    private func renameRoots() -> [URL] {
+        var roots: [URL] = []
+        let folders = config.folders.filter { $0.enabled && !Exclusions.isExcluded($0.path, excluded: config.excludedFolders) }
+        for rule in config.rules where rule.enabled && rule.rename {
+            let destination = rule.destination.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !destination.isEmpty else { continue }
+            var fixed = destination
+            if let brace = fixed.firstIndex(of: "{") {
+                fixed = String(fixed[..<brace])
+            }
+            fixed = fixed.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+            guard !fixed.isEmpty else { continue }
+            if destination.hasPrefix("/") || destination.hasPrefix("~") {
+                let absolute = destination.hasPrefix("/") ? "/" + fixed : fixed
+                roots.append(Self.resolveDestination(absolute, base: URL(fileURLWithPath: "/"), file: URL(fileURLWithPath: "/x")))
+            } else {
+                for folder in folders {
+                    roots.append(Self.resolveDestination(fixed, base: folder.url, file: URL(fileURLWithPath: "/x")))
+                }
+            }
+        }
+        // Fără dubluri și fără foldere aflate în interiorul altora din listă.
+        let paths = Array(Set(roots.map { $0.standardizedFileURL.path })).sorted()
+        var kept: [String] = []
+        for path in paths where !kept.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) {
+            if path == "/" || Exclusions.isExcluded(path, excluded: config.excludedFolders) { continue }
+            kept.append(path)
+        }
+        return kept.map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+
+    /// Previzualizare pentru „Redenumește documentele sortate”: ce nume noi ar primi, fără să schimbe nimic.
+    func planRenames(token: CancelToken,
+                     progress: @escaping @Sendable (Int, Int) -> Void,
+                     completion: @escaping @Sendable ([PlannedMove]) -> Void) {
+        queue.async {
+            let keys: [URLResourceKey] = [.isRegularFileKey, .isPackageKey]
+            var files: [URL] = []
+            for root in self.renameRoots() {
+                guard let enumerator = self.fm.enumerator(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
+                for case let url as URL in enumerator {
+                    if token.isCancelled { break }
+                    if Exclusions.isExcluded(url.path, excluded: self.config.excludedFolders) {
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                    guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
+                    if values.isPackage == true {
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                    guard values.isRegularFile == true else { continue }
+                    let name = url.lastPathComponent
+                    guard Self.isCandidateName(name, siblings: []) else { continue }
+                    files.append(url)
+                }
+            }
+            files.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+
+            var moves: [PlannedMove] = []
+            progress(0, files.count)
+            for (index, url) in files.enumerated() {
+                if token.isCancelled { break }
+                autoreleasepool {
+                    let context = FileContext(url: url, extractor: self.extractor)
+                    let info = context.documentInfo(companies: self.config.companies, settings: self.config.settings)
+                    if let newName = info.fileName(extension: url.pathExtension),
+                       newName.lowercased() != url.lastPathComponent.lowercased() {
+                        moves.append(PlannedMove(source: url, destinationFolder: url.deletingLastPathComponent(), newName: newName, ruleName: "Redenumire"))
+                    }
+                }
+                progress(index + 1, files.count)
+            }
+            completion(token.isCancelled ? [] : moves)
+        }
+    }
+
     func execute(_ moves: [PlannedMove], completion: @escaping @Sendable (Int, [String]) -> Void) {
         queue.async {
             var count = 0
@@ -370,6 +449,7 @@ final class SortEngine {
                 documentType: typeText,
                 company: info.company ?? "—",
                 partner: info.partner ?? "—",
+                number: info.number ?? "—",
                 dateText: "\(info.dateString) — \(info.dateSource)",
                 proposedName: proposedName
             ))

@@ -4,6 +4,7 @@ import AppKit
 struct FoldersView: View {
     @EnvironmentObject var state: AppState
     @State private var sortTarget: WatchedFolder?
+    @State private var showRename = false
 
     var body: some View {
         ScrollView {
@@ -16,6 +17,10 @@ struct FoldersView: View {
         }
         .sheet(item: $sortTarget) { folder in
             SortExistingSheet(folder: folder)
+                .environmentObject(state)
+        }
+        .sheet(isPresented: $showRename) {
+            RenameExistingSheet()
                 .environmentObject(state)
         }
     }
@@ -59,6 +64,13 @@ struct FoldersView: View {
                         state.addDownloads()
                     }
                 }
+                Spacer()
+                Button {
+                    showRename = true
+                } label: {
+                    Label("Redenumește documentele sortate…", systemImage: "character.cursor.ibeam")
+                }
+                .help("Dă numele Tip Număr – Partener – Dată documentelor deja sortate (cu previzualizare)")
             }
         }
     }

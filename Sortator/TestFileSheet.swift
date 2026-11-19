@@ -55,6 +55,10 @@ struct TestFileSheet: View {
                             Text(result.partner)
                         }
                         GridRow {
+                            Text("Număr").foregroundStyle(.secondary)
+                            Text(result.number)
+                        }
+                        GridRow {
                             Text("Dată").foregroundStyle(.secondary)
                             Text(result.dateText)
                         }

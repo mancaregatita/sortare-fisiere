@@ -1,6 +1,6 @@
 # Sortator
 
-Aplicație de Mac (bara de meniu) care mută automat fișierele noi din folderele urmărite (ex. Descărcări) în subfoldere, după reguli: tipul fișierului, cuvinte din nume sau din conținut (PDF, OCR pe scanări și poze, Word, Excel, XML e-Factura din arhive .zip). Recunoaște tipul documentului și firmele, poate redenumi documentele `Dată – Firmă – Tip – Partener`, găsește dubluri și installere vechi. Rulează local, fără internet.
+Aplicație de Mac (bara de meniu) care mută automat fișierele noi din folderele urmărite (ex. Descărcări) în subfoldere, după reguli: tipul fișierului, cuvinte din nume sau din conținut (PDF, OCR pe scanări și poze, Word, Excel, XML e-Factura din arhive .zip). Recunoaște tipul documentului și firmele, poate redenumi documentele `Tip Număr – Partener – Dată` (și pe cele deja sortate, cu previzualizare), găsește dubluri și installere vechi. Rulează local, fără internet.
 
 | | |
 |---|---|

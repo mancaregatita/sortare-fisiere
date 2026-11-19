@@ -73,6 +73,8 @@ struct DocumentInfo {
     var type: DocType?
     var company: String?
     var partner: String?
+    /// Numărul documentului (ex. „CHE 1234”, „12-2026”), dacă a fost găsit.
+    var number: String? = nil
     var date: Date
     var dateSource: String
     var usedAI: Bool = false
@@ -87,16 +89,18 @@ struct DocumentInfo {
 
     var dateString: String { Self.dayFormatter.string(from: date) }
 
-    /// Dată – Firmă – Tip – Partener.ext (doar dacă știm tipul documentului).
+    /// Tip Număr – Partener – Dată.ext (doar dacă știm tipul documentului).
+    /// Fără număr: Tip – Partener – Dată; fără partener: Tip Număr – Dată.
     func fileName(extension ext: String) -> String? {
         guard let type else { return nil }
-        var parts = [dateString]
-        if let company, !company.isEmpty { parts.append(company) }
-        parts.append(type.name)
+        var first = type.name
+        if let number, !number.isEmpty { first += " " + number }
+        var parts = [first]
         if let partner, !partner.isEmpty,
            TextNormalizer.fold(partner) != TextNormalizer.fold(company ?? "") {
             parts.append(partner)
         }
+        parts.append(dateString)
         var base = Names.safeFileName(parts.joined(separator: " – "))
         if base.count > 150 { base = String(base.prefix(150)).trimmingCharacters(in: .whitespaces) }
         return ext.isEmpty ? base : base + "." + ext
@@ -114,6 +118,7 @@ enum DocumentAnalyzer {
         var type: DocType?
         var company: String?
         var partner: String?
+        var number: String?
         var date: Date?
         var source = ""
         var usedAI = false
@@ -123,6 +128,7 @@ enum DocumentAnalyzer {
             type = DocTypes.invoice
             company = invoice.company
             partner = invoice.partner
+            number = invoice.number
             if let issue = invoice.issueDate {
                 date = issue
                 source = "data facturii (e-Factura)"
@@ -157,6 +163,10 @@ enum DocumentAnalyzer {
             }
         }
 
+        if number == nil, let type {
+            number = NumberFinder.find(type: type, text: text)
+        }
+
         if date == nil {
             if file.isImage {
                 date = file.addedDate
@@ -174,6 +184,7 @@ enum DocumentAnalyzer {
             type: type,
             company: company,
             partner: partner,
+            number: number,
             date: date ?? file.addedDate,
             dateSource: source,
             usedAI: usedAI
@@ -240,6 +251,7 @@ enum EFactura {
         var company: String?
         var partner: String?
         var issueDate: Date?
+        var number: String?
     }
 
     static func parse(_ raw: String, companies: [CompanyProfile]) -> Result? {
@@ -267,6 +279,9 @@ enum EFactura {
             result.partner = supplierName
         }
         result.partner = result.partner.flatMap { Names.clean($0) }
+        if let id = value(raw, tag: "ID") {
+            result.number = NumberFinder.clean(id)
+        }
         if let issue = value(raw, tag: "IssueDate") {
             result.issueDate = DateFinder.parseISO(issue)
         }
@@ -602,5 +617,73 @@ extension EFactura {
             }
         }
         return result
+    }
+}
+
+// MARK: - Numărul documentului
+
+enum NumberFinder {
+    /// „Seria CHE nr. 1234”, „Factura nr. 1234”, „Nr. factură: 1234”, „Contract nr. 12/2026”, „Invoice no. 77”.
+    private static let pattern = try? NSRegularExpression(
+        pattern: "(?<![a-z])(?:seria\\s*[:.]?\\s*([a-z]{1,8})\\s*[,;]?\\s*)?(?:nr|numar|numarul|no)\\.?\\s*(?:factura|facturii|document|documentului|doc|contract|contractului)?\\s*[:.#]?\\s*([a-z]{0,6}-?[0-9][0-9a-z/\\-]{0,19})"
+    )
+
+    /// Cuvinte care, chiar înainte de „nr”, arată că nu e numărul documentului (adresă, registru, cont…).
+    private static let excludedBefore = [
+        "reg", "registr", "com", "tel", "telefon", "fax", "cont", "ord", "crt", "inmatriculare",
+        "str", "strada", "bd", "bulevardul", "sos", "soseaua", "calea", "aleea", "sector", "bl", "sc", "et", "ap",
+        "cod", "cnp", "ci", "buletin", "pasaport", "aviz", "inregistrare", "inregistrata", "inregistrat", "sub", "intrare", "iesire", "angajat"
+    ]
+
+    static func find(type: DocType, text: String) -> String? {
+        guard let regex = pattern else { return nil }
+        let folded = TextNormalizer.fold(String(text.prefix(6000)))
+        let ns = folded as NSString
+        let matches = regex.matches(in: folded, range: NSRange(location: 0, length: ns.length))
+
+        var withSeries: String?
+        var afterType: String?
+        let typeWords = type.phrases + ["factura", "invoice", "document", "numar", "seria"]
+
+        for match in matches where match.numberOfRanges == 3 {
+            let start = match.range.location
+            let before = ns.substring(with: NSRange(location: max(0, start - 45), length: min(45, start)))
+            // Doar cuvintele de pe același rând, chiar înainte de „nr”.
+            let sameLine = before.components(separatedBy: .newlines).last ?? ""
+            let lastWords = sameLine.split(whereSeparator: { !$0.isLetter }).suffix(2).map(String.init)
+            if lastWords.contains(where: { excludedBefore.contains($0) }) { continue }
+            let matched = ns.substring(with: match.range)
+
+            let numberRange = match.range(at: 2)
+            guard numberRange.location != NSNotFound else { continue }
+            var value = ns.substring(with: numberRange)
+            let seriesRange = match.range(at: 1)
+            let hasSeries = seriesRange.location != NSNotFound
+            if hasSeries {
+                value = ns.substring(with: seriesRange) + " " + value
+            }
+            guard let cleaned = clean(value) else { continue }
+
+            if hasSeries, withSeries == nil {
+                withSeries = cleaned
+            }
+            let near = String(before.suffix(40)) + " " + matched
+            if afterType == nil, typeWords.contains(where: { near.contains($0) }) {
+                afterType = cleaned
+            }
+            if withSeries != nil { break }
+        }
+        return withSeries ?? afterType
+    }
+
+    /// Curăță numărul pentru numele fișierului: majuscule, „/” devine „-”, cel mult 20 de caractere.
+    static func clean(_ raw: String) -> String? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        s = s.replacingOccurrences(of: "/", with: "-")
+        s = s.replacingOccurrences(of: "[^A-Z0-9 \\-]", with: "", options: .regularExpression)
+        s = s.trimmingCharacters(in: CharacterSet(charactersIn: " -"))
+        guard s.contains(where: { $0.isNumber }), !s.isEmpty else { return nil }
+        if s.count > 20 { s = String(s.prefix(20)).trimmingCharacters(in: CharacterSet(charactersIn: " -")) }
+        return s
     }
 }

@@ -6,7 +6,8 @@ Sortator stă în bara de sus a Mac-ului (lângă ceas) și pune ordine în fold
 
 - fișierele noi sunt mutate automat în subfoldere (Imagini, Documente, Facturi ale unei firme etc.), după reguli pe care le poți schimba;
 - citește și conținutul documentelor (PDF, poze și scanări, Word, Excel, e-Factura din SPV), deci recunoaște o factură chiar dacă numele fișierului nu spune nimic;
-- poate redenumi documentele: `Dată – Firmă – Tip – Partener` (ex. `2026-11-03 – Firma Mea – Factură – Furnizor Exemplu.pdf`);
+- poate redenumi documentele: `Tip Număr – Partener – Dată` (ex. `Factură CHE 1234 – Furnizor Exemplu – 2026-11-03.pdf`); fără număr găsit: `Factură – Furnizor Exemplu – 2026-11-03.pdf`;
+- poate redenumi și documentele deja sortate: tab-ul **Foldere** → **Redenumește documentele sortate…** (sau din **Setări**), cu listă de previzualizare și bife; orice redenumire se anulează din **Istoric**;
 - găsește singură firmele din documente și te întreabă care sunt ale tale;
 - găsește dublurile și installerele vechi și te întreabă ce muți la Coș;
 - ține istoricul: orice mutare se poate anula.
@@ -66,7 +67,7 @@ Jos, în fiecare tab, bara de stare arată Activ / În pauză, ultimul mesaj și
   - **Se aplică atunci când se potrivesc**: Toate condițiile sau Oricare condiție;
   - **Condiții**: Extensia este / Numele conține / Conținutul conține / Numele sau conținutul conține, urmate de cuvinte separate prin virgulă;
   - **Mută în**: subfolder al folderului urmărit (ex. `Facturi`) sau orice folder de pe Mac (începe cu `~/` sau `/`). Butonul **Alege…** îl selectezi din Finder;
-  - **Redenumește: Dată – Firmă – Tip – Partener**.
+  - **Redenumește: Tip Număr – Partener – Dată**.
 - **Testează un fișier…** (jos): alegi un fișier și vezi ce regulă s-ar aplica, unde ar merge, ce nume ar primi, ce tip/firmă/partener/dată a găsit și ce text a citit. Nu mută nimic.
 
 **Cum scrii cuvintele**

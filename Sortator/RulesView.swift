@@ -207,7 +207,7 @@ struct RuleEditor: View {
                         }
                     }
                 }
-                Toggle("Redenumește: Dată – Firmă – Tip – Partener", isOn: $rule.rename)
+                Toggle("Redenumește: Tip Număr – Partener – Dată", isOn: $rule.rename)
             } header: {
                 Text("Destinație")
             } footer: {

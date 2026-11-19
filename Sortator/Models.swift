@@ -82,7 +82,7 @@ struct SortRule: Codable, Identifiable, Hashable {
     var conditions: [RuleCondition]
     /// Relativ la folderul urmărit, sau cale absolută (/… sau ~/…). Gol = fișierul rămâne pe loc.
     var destination: String
-    /// Redenumește documentele mutate: Dată – Firmă – Tip – Partener.
+    /// Redenumește documentele mutate: Tip Număr – Partener – Dată.
     var rename: Bool
 
     init(id: UUID = UUID(),
@@ -292,6 +292,7 @@ struct TestResult {
     var documentType: String
     var company: String
     var partner: String
+    var number: String
     var dateText: String
     var proposedName: String
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
+    @State private var showRename = false
 
     var body: some View {
         Form {
@@ -26,6 +27,14 @@ struct SettingsView: View {
 
             Section("Redenumire și tipul documentului") {
                 Toggle("Redenumește documentele mutate (la regulile care au redenumirea bifată)", isOn: $state.config.settings.renameDocuments)
+                HStack {
+                    Text("Nume: Tip Număr – Partener – Dată (ex. Factură CHE 1234 – Furnizor – 2026-11-03)")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Redenumește documentele sortate…") {
+                        showRename = true
+                    }
+                }
                 Toggle("Folosește AI-ul Apple de pe Mac când nu recunoaște tipul documentului", isOn: $state.config.settings.useAppleAI)
                 Text("AI-ul Apple: \(AppleAI.statusText) Rulează local, fără internet. Româna nu e oficial suportată, așa că e doar o rezervă; recunoașterea principală merge pe orice Mac.")
                     .font(.caption)
@@ -76,6 +85,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showRename) {
+            RenameExistingSheet()
+                .environmentObject(state)
+        }
     }
 }
 

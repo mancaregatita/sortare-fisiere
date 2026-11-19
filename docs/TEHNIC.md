@@ -8,7 +8,7 @@ Aplicație macOS de bara de meniu (fără iconiță în Dock, `LSUIElement = tru
 
 - condiții pe extensie, cuvinte din nume, cuvinte din conținut;
 - citirea conținutului: text din PDF, OCR (Vision) pe PDF-uri scanate și poze, Word/Excel/PowerPoint/OpenOffice, RTF/DOC, text/XML, XML-uri din arhive `.zip` (e-Factura din SPV);
-- recunoaște tipul documentului (Factură, Contract, Extras de cont etc.), firma proprie, partenerul și data, și poate redenumi fișierul `Dată – Firmă – Tip – Partener.ext`;
+- recunoaște tipul documentului (Factură, Contract, Extras de cont etc.), firma proprie, partenerul și data, numărul documentului, și poate redenumi fișierul `Tip Număr – Partener – Dată.ext`;
 - găsește firme (CUI validat cu cifra de control) în documente și propune adăugarea lor ca „firmele mele”, cu regulă proprie;
 - curățenie: dubluri (SHA-256) și installere vechi (.dmg/.pkg/.mpkg), mutate la Coș doar la cererea utilizatorului;
 - istoric al mutărilor, cu anulare („Readu înapoi”).
@@ -144,7 +144,9 @@ Mai multe cuvinte în aceeași condiție = ajunge unul.
 
 ### Redenumire
 
-Se face doar dacă regula are `rename = true`, setarea globală „Redenumește documentele mutate” e pornită și tipul documentului a fost recunoscut. Format: `yyyy-MM-dd – Firmă – Tip – Partener.ext` (firma și partenerul doar dacă există; partenerul nu se repetă dacă e identic cu firma). Caracterele `/` și `:` devin `-`; numele e tăiat la 150 de caractere.
+Se face doar dacă regula are `rename = true`, setarea globală „Redenumește documentele mutate” e pornită și tipul documentului a fost recunoscut. Format: `Tip Număr – Partener – yyyy-MM-dd.ext` (numărul și partenerul doar dacă au fost găsite; partenerul nu apare dacă e identic cu firma proprie). Numărul: la e-Factura din `cbc:ID`; altfel din text (`NumberFinder`): „Seria X nr. Y” are prioritate, apoi „nr./număr/no.” lângă tipul documentului; se ignoră „nr.” precedat pe același rând de cuvinte de adresă, registru, telefon, cont etc. Numărul e scris cu majuscule, `/` devine `-`, maximum 20 de caractere.
+
+**Redenumirea documentelor deja sortate** (`SortEngine.planRenames`, foaia `RenameExistingSheet`, din tab-ul Foldere sau din Setări): caută recursiv doar în partea fixă a destinațiilor regulilor active cu redenumire (ex. `Firme/<firmă>/{tipdoc}` → `Firme/<firmă>`, în fiecare folder urmărit), fără foldere excluse. Arată lista „nume nou / nume actual”, redenumește doar ce e bifat, cu `execute` (intră în Istoric cu regula „Redenumire”, deci se poate anula). Nu schimbă numele care diferă doar prin majuscule. Caracterele `/` și `:` devin `-`; numele e tăiat la 150 de caractere.
 
 ### Regulile inițiale (`DefaultRules.all`)
 

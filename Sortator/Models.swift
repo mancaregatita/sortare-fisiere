@@ -112,6 +112,12 @@ struct SortRule: Codable, Identifiable, Hashable {
         rename = try c.decodeIfPresent(Bool.self, forKey: .rename) ?? false
     }
 
+    /// Regula pune documentul după tipul lui ({tipdoc}), deci se aplică doar documentelor recunoscute
+    /// (factură, contract…). Altfel o arhivă oarecare cu numele firmei în ea ar ajunge la firmă.
+    var needsDocumentType: Bool {
+        destination.contains("{tipdoc}")
+    }
+
     /// Destinația folosește date din document ({firma}, {tipdoc}, {partener}).
     var usesDocumentFields: Bool {
         destination.contains("{firma}") || destination.contains("{tipdoc}") || destination.contains("{partener}")

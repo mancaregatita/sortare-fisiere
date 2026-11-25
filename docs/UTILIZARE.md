@@ -157,6 +157,7 @@ Jos, în fiecare tab, bara de stare arată Activ / În pauză, ultimul mesaj și
 - Toate mutările (ultimele 1.000), cu căutare după nume, regulă sau folder.
 - **Arată**: deschide fișierul în Finder.
 - **Readu înapoi**: pune fișierul unde era, cu numele vechi, iar Sortator nu îl mai mută automat.
+- **Readu înapoi…** (sus): mai multe deodată: tot din ultima oră, tot de azi, sau tot ce se vede după căutare (ex. numele firmei). Folderele rămase goale se șterg.
 - **Golește**: șterge doar lista; fișierele rămân unde sunt.
 
 ### Setări
@@ -190,6 +191,7 @@ Jos, în fiecare tab, bara de stare arată Activ / În pauză, ultimul mesaj și
 | Un fișier merge în alt folder decât te așteptai | O regulă mai de sus se potrivește prima | Mută regula dorită mai sus (săgeți sus/jos) |
 | Mesaj „nu a fost mutat: regula … duce într-un folder exclus” | Destinația e în Foldere excluse | Schimbă destinația regulii sau scoate folderul din excluderi |
 | Un fișier readus cu „Readu înapoi” nu mai e sortat | Normal: fișierele readuse nu se mai mută automat | Mută-l manual sau folosește **Sortează ce există…** |
+| Un fișier cu numele firmei nu a ajuns la firmă | Nu a recunoscut tipul documentului (factură, contract…) sau e o arhivă fără e-Factura | Normal: la firmă ajung doar documentele recunoscute; restul merg în Documents / Archives |
 | Documentul nu e redenumit | Nu a recunoscut tipul documentului, regula nu are redenumirea bifată, sau redenumirea e oprită în Setări | **Testează un fișier…** arată tipul găsit; verifică bifa din regulă și din Setări |
 | Firma apare ca „No company” în folder | Firma nu e în **Firmele mele** sau CUI-ul/numele nu apar în document | Tab Firme → **E firma mea** sau adaug-o manual cu CUI |
 | Factura scanată nu e recunoscută | OCR oprit sau scanare slabă | Setări → pornește OCR pe PDF scanate / poze; vezi textul citit în **Testează un fișier…** |

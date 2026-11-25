@@ -478,6 +478,43 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Readuce toate fișierele din listă (ex. tot ce s-a mutat azi), după confirmare.
+    func undoMany(_ entries: [HistoryEntry], label: String) {
+        let pending = entries.filter { !$0.undone }
+        guard !pending.isEmpty else {
+            showAlert("Nimic de readus", "Fișierele din \(label) au fost deja readuse.")
+            return
+        }
+        guard confirm("Readuci \(RO.count(pending.count, "fișier", "fișiere")) (\(label))?",
+                      "Fiecare se întoarce în folderul de unde a fost luat, cu numele vechi, și nu mai e mutat automat. Folderele rămase goale se șterg.",
+                      ok: "Readu înapoi") else { return }
+        statusMessage = "Readuc \(RO.count(pending.count, "fișier", "fișiere"))…"
+        engine.undoMany(pending) { results in
+            Task { @MainActor in AppState.shared.finishUndoMany(results) }
+        }
+    }
+
+    private func finishUndoMany(_ results: [(UUID, String?, String?)]) {
+        var restored = 0
+        var failed: [String] = []
+        for (id, path, error) in results {
+            guard let index = history.firstIndex(where: { $0.id == id }) else { continue }
+            if let path {
+                history[index].undone = true
+                history[index].fromPath = path
+                restored += 1
+            } else {
+                failed.append("\(history[index].fileName): \(error ?? "eroare")")
+            }
+        }
+        saveHistory()
+        statusMessage = "Readuse: \(RO.count(restored, "fișier", "fișiere"))"
+        if !failed.isEmpty {
+            showAlert("\(RO.count(failed.count, "fișier nu a putut fi readus", "fișiere nu au putut fi readuse"))",
+                      failed.prefix(15).joined(separator: "\n") + (failed.count > 15 ? "\n…" : ""))
+        }
+    }
+
     private func finishUndo(_ id: UUID, _ result: Result<String, Error>) {
         switch result {
         case .success(let path):

@@ -2,7 +2,7 @@ import Foundation
 
 /// Traduce numele fișierelor redenumite de versiunile vechi, fără să le deschidă (nu descarcă nimic din iCloud):
 /// - „Factură 1234 – Metro – 2026-11-03.pdf”        → „Invoice 1234 – Metro – 2026-11-03.pdf”
-/// - „2026-11-03 – ROSICO PRIM – Factură – Metro.pdf” → „Invoice – Metro – 2026-11-03.pdf”
+/// - „2026-11-03 – Firma Mea – Factură – Metro.pdf” → „Invoice – Metro – 2026-11-03.pdf”
 enum LegacyNames {
     struct Translation: Equatable {
         let name: String

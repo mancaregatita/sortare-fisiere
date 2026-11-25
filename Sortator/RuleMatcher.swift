@@ -155,7 +155,16 @@ enum RuleMatcher {
         }
     }
 
-    static func firstMatch(_ rules: [SortRule], _ file: FileContext) -> SortRule? {
-        rules.first { ruleMatches($0, file) }
+    /// Condițiile regulii + (la regulile cu {tipdoc}) tipul documentului recunoscut.
+    static func ruleApplies(_ rule: SortRule, _ file: FileContext, companies: [CompanyProfile], settings: AppSettings) -> Bool {
+        guard ruleMatches(rule, file) else { return false }
+        if rule.needsDocumentType {
+            return file.documentInfo(companies: companies, settings: settings).type != nil
+        }
+        return true
+    }
+
+    static func firstMatch(_ rules: [SortRule], _ file: FileContext, companies: [CompanyProfile], settings: AppSettings) -> SortRule? {
+        rules.first { ruleApplies($0, file, companies: companies, settings: settings) }
     }
 }

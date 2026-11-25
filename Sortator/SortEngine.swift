@@ -312,6 +312,7 @@ final class SortEngine {
     private func discoverParties(_ context: FileContext, key: String) {
         guard PartyExtractor.documentExtensions.contains(context.ext) else { return }
         _ = context.normalizedContent()
+        if context.ext == "zip", !EFactura.looksLike(context.extracted.raw) { return }
         let parties = PartyExtractor.parties(text: context.extracted.text, raw: context.extracted.raw)
         onParties?(key, parties)
     }
@@ -319,7 +320,7 @@ final class SortEngine {
     private func process(_ url: URL, in folder: WatchedFolder, key: String) {
         let context = FileContext(url: url, extractor: extractor)
         discoverParties(context, key: key)
-        guard let rule = RuleMatcher.firstMatch(config.rules, context) else {
+        guard let rule = RuleMatcher.firstMatch(config.rules, context, companies: config.companies, settings: config.settings) else {
             markEvaluated(key)
             return
         }
@@ -379,6 +380,55 @@ final class SortEngine {
         }
     }
 
+    /// Readuce mai multe fișiere deodată (cele mai noi primele) și șterge folderele rămase goale
+    /// în folderele urmărite (ex. „Firme/X/2017/Other”). Rezultat: (id intrare, cale nouă sau eroare).
+    func undoMany(_ entries: [HistoryEntry], completion: @escaping @Sendable ([(UUID, String?, String?)]) -> Void) {
+        queue.async {
+            var results: [(UUID, String?, String?)] = []
+            var touchedFolders: Set<String> = []
+            for entry in entries.sorted(by: { $0.date > $1.date }) where !entry.undone {
+                let current = URL(fileURLWithPath: entry.toPath)
+                guard self.fm.fileExists(atPath: current.path) else {
+                    results.append((entry.id, nil, "nu mai e la destinație"))
+                    continue
+                }
+                let original = URL(fileURLWithPath: entry.fromPath)
+                let folder = original.deletingLastPathComponent()
+                do {
+                    try self.fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                    let target = Self.uniqueURL(in: folder, name: original.lastPathComponent, fileManager: self.fm)
+                    try Self.coordinatedMove(current, to: target, fileManager: self.fm)
+                    self.ignored.insert(target.path)
+                    touchedFolders.insert(current.deletingLastPathComponent().path)
+                    results.append((entry.id, target.path, nil))
+                } catch {
+                    results.append((entry.id, nil, error.localizedDescription))
+                }
+            }
+            self.saveState()
+            self.removeEmptyFolders(touchedFolders)
+            completion(results)
+        }
+    }
+
+    /// Șterge folderele goale rămase după readucere, urcând până la folderul urmărit (pe care nu-l atinge).
+    /// `Keep` și `Ableton Projects` nu se șterg niciodată.
+    private func removeEmptyFolders(_ paths: Set<String>) {
+        let roots = config.folders.map { URL(fileURLWithPath: $0.path).standardizedFileURL.path }
+        // Cele mai adânci primele, ca un părinte să fie verificat după copiii lui.
+        for path in paths.sorted(by: { $0.count > $1.count }) {
+            var url = URL(fileURLWithPath: path).standardizedFileURL
+            while let root = roots.first(where: { url.path.hasPrefix($0 + "/") }) {
+                let relative = url.path.dropFirst(root.count + 1)
+                let top = relative.split(separator: "/").first.map(String.init) ?? ""
+                if ManagedFolders.untouchable.contains(top) { break }
+                guard isEmptyFolder(url) else { break }
+                guard (try? fm.removeItem(at: url)) != nil else { break }
+                url = url.deletingLastPathComponent()
+            }
+        }
+    }
+
     /// Previzualizare pentru „Sortează ce există”: ce s-ar muta, fără să mute nimic.
     func plan(folder: WatchedFolder,
               token: CancelToken,
@@ -419,7 +469,7 @@ final class SortEngine {
                 if token.isCancelled { break }
                 autoreleasepool {
                     let context = FileContext(url: url, extractor: self.extractor)
-                    if let rule = RuleMatcher.firstMatch(self.config.rules, context),
+                    if let rule = RuleMatcher.firstMatch(self.config.rules, context, companies: self.config.companies, settings: self.config.settings),
                        let planned = self.target(for: rule, context: context, base: folder.url) {
                         if !Self.samePath(planned.folder, url.deletingLastPathComponent()),
                            !Exclusions.isExcluded(planned.folder.path, excluded: self.config.excludedFolders) {
@@ -434,7 +484,7 @@ final class SortEngine {
     }
 
     /// Folderele în care Sortator pune documente redenumite: partea fixă a destinației regulilor
-    /// cu redenumire (ex. „Firme/ROSICO PRIM/{tipdoc}” → „Firme/ROSICO PRIM”).
+    /// cu redenumire (ex. „Firme/Firma Mea/{tipdoc}” → „Firme/Firma Mea”).
     private func renameRoots() -> [URL] {
         var roots: [URL] = []
         let folders = config.folders.filter { $0.enabled && !Exclusions.isExcluded($0.path, excluded: config.excludedFolders) }
@@ -648,9 +698,14 @@ final class SortEngine {
                     report.append("–  \(rule.name) (oprită)")
                     continue
                 }
-                let ok = RuleMatcher.ruleMatches(rule, context)
+                let conditionsOK = RuleMatcher.ruleMatches(rule, context)
+                let ok = conditionsOK && RuleMatcher.ruleApplies(rule, context, companies: self.config.companies, settings: self.config.settings)
                 if ok && firstRule == nil { firstRule = rule }
-                report.append((ok ? "✓  " : "✗  ") + rule.name)
+                if conditionsOK && !ok {
+                    report.append("✗  \(rule.name) (tipul documentului nu e recunoscut)")
+                } else {
+                    report.append((ok ? "✓  " : "✗  ") + rule.name)
+                }
             }
             var destination: String?
             var proposedName = url.lastPathComponent

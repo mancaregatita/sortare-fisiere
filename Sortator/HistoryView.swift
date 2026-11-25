@@ -23,12 +23,27 @@ struct HistoryView: View {
                 TextField("Caută", text: $filter)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 220)
+                Menu("Readu înapoi…") {
+                    Button("Tot ce s-a mutat în ultima oră") {
+                        let since = Date().addingTimeInterval(-3600)
+                        state.undoMany(state.history.filter { $0.date >= since }, label: "ultima oră")
+                    }
+                    Button("Tot ce s-a mutat azi") {
+                        let since = Calendar.current.startOfDay(for: Date())
+                        state.undoMany(state.history.filter { $0.date >= since }, label: "azi")
+                    }
+                    Button("Tot ce se vede în listă (după căutare)") {
+                        state.undoMany(filtered, label: filter.isEmpty ? "toată lista" : "căutarea „\(filter)”")
+                    }
+                }
+                .fixedSize()
+                .disabled(state.history.allSatisfy { $0.undone })
                 Button("Golește") {
                     state.clearHistory()
                 }
                 .disabled(state.history.isEmpty)
             }
-            Text("„Readu înapoi” pune fișierul unde era, iar Sortator nu îl mai mută automat.")
+            Text("„Readu înapoi” pune fișierul unde era, iar Sortator nu îl mai mută automat. Pentru mai multe deodată: caută numele firmei sau al folderului, apoi „Readu înapoi…” → „Tot ce se vede în listă”.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

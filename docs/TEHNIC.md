@@ -118,6 +118,7 @@ Fereastra principală se deschide la prima pornire și din meniu. Cât e deschis
 `RuleCondition`: `field` (`ext`, `name`, `content`, `nameOrContent`) + `keywords` (separate prin virgulă, punct și virgulă sau rând nou).
 
 - Regulile se verifică de sus în jos; prima care se potrivește câștigă (`RuleMatcher.firstMatch`).
+- O regulă cu `{tipdoc}` în destinație (regulile firmelor) se aplică doar dacă tipul documentului a fost recunoscut (`SortRule.needsDocumentType`, `RuleMatcher.ruleApplies`); altfel fișierul trece la regulile următoare. Arhivele `.zip` au tip doar dacă conțin o e-Factura (o temă Shopify cu numele firmei în ea nu mai ajunge la firmă).
 - O regulă fără nicio condiție completată nu se potrivește niciodată.
 - În interiorul unei reguli, condițiile se verifică de la cea mai ieftină (extensie → nume → nume sau conținut → conținut), ca să nu se citească conținutul degeaba. Conținutul se citește o singură dată per fișier (`FileContext`).
 - Extensie: listă fără punct; `*` = orice extensie.
@@ -257,6 +258,7 @@ Textul extras e tăiat la 300.000 de caractere.
 
 - Fiecare mutare (automată sau din „Sortează ce există”) → `HistoryEntry` (dată, nume original, cale veche, cale nouă, regulă). Se păstrează ultimele 1.000.
 - „Readu înapoi” mută fișierul înapoi în folderul original, cu numele original (cu ` (2)` dacă e ocupat), și îl pune în `ignored`, ca să nu mai fie mutat automat. Căile din `ignored` care nu mai există se curăță la scanările complete.
+- „Readu înapoi…” (meniu): tot din ultima oră, tot de azi sau tot ce se vede după căutare (`undoMany`, după confirmare). După readucere, folderele rămase goale din folderele urmărite se șterg (nu `Keep`, nu `Ableton Projects`, nu folderul urmărit).
 - „Golește” șterge doar lista, nu fișierele.
 
 ## Date salvate (fără bază de date)

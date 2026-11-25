@@ -172,7 +172,9 @@ enum DocumentAnalyzer {
             }
         }
 
-        if type == nil {
+        // O arhivă (ex. o temă Shopify, un proiect) nu e document: tipul vine doar din e-Factura.
+        let isArchive = file.ext == "zip"
+        if type == nil, !isArchive {
             type = DocTypes.detect(name: file.normalizedName, title: title, body: normalizedText)
         }
         if company == nil {
@@ -183,7 +185,7 @@ enum DocumentAnalyzer {
         }
 
         // AI-ul Apple, doar ca rezervă, când regulile nu au recunoscut tipul.
-        if type == nil, settings.useAppleAI,
+        if type == nil, !isArchive, settings.useAppleAI,
            text.trimmingCharacters(in: .whitespacesAndNewlines).count >= 40,
            let guess = AppleAI.guess(text: text) {
             if let guessed = DocTypes.named(guess.type) {
@@ -289,6 +291,12 @@ enum EFactura {
         var partner: String?
         var issueDate: Date?
         var number: String?
+    }
+
+    /// XML-ul e o e-Factura (factură sau notă de credit UBL).
+    static func looksLike(_ raw: String?) -> Bool {
+        guard let raw else { return false }
+        return raw.contains("AccountingSupplierParty") && (raw.contains("Invoice") || raw.contains("CreditNote"))
     }
 
     static func parse(_ raw: String, companies: [CompanyProfile]) -> Result? {

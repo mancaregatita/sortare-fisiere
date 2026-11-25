@@ -28,6 +28,10 @@ struct FoldersView: View {
             MigrateLegacySheet()
                 .environmentObject(state)
         }
+        .sheet(isPresented: $state.showProposals) {
+            ProposalsSheet()
+                .environmentObject(state)
+        }
     }
 
     private var watchedSection: some View {
@@ -37,6 +41,21 @@ struct FoldersView: View {
             Text("Fișierele noi care apar aici sunt mutate automat în Firme, Images, Videos, Audio, Documents, Archives, Installers, Ableton Projects și Other. Ce exista deja rămâne neatins până apeși „Sortează ce există”. Folderele tale (repo-uri, proiecte) nu se mută niciodată, cu excepția proiectelor Ableton, mutate doar cu Ableton închis. Ce pui în Keep nu e atins niciodată.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if !state.proposals.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "checklist")
+                        .foregroundStyle(.orange)
+                    Text("Mod de probă: \(RO.count(state.proposals.count, "mutare așteaptă", "mutări așteaptă")) aprobarea ta.")
+                    Spacer()
+                    Button("Vezi propunerile…") {
+                        state.showProposals = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+            }
 
             if state.config.folders.isEmpty {
                 Text("Niciun folder urmărit încă.")
@@ -176,11 +195,29 @@ struct FolderRow: View {
                     Text("Este în lista de excluderi — nu e urmărit")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                } else if folder.inTrial, let until = folder.trialUntil {
+                    Text("Mod de probă până pe \(until.formatted(date: .abbreviated, time: .shortened)): doar propune, nu mută")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
             }
             Spacer()
             Toggle("Activ", isOn: state.folderEnabledBinding(folder.id))
                 .toggleStyle(.switch)
+            if folder.inTrial {
+                Button("Termină proba") {
+                    if state.confirm("Termini modul de probă pentru „\(folder.displayName)”?",
+                                     "De acum fișierele noi se mută automat. Propunerile deja făcute rămân în listă până le aprobi sau le respingi.",
+                                     ok: "Termină proba") {
+                        state.endTrial(folder.id)
+                    }
+                }
+            } else {
+                Button("Mod de probă") {
+                    state.startTrial(folder.id)
+                }
+                .help("\(RO.count(max(1, state.config.settings.trialDays), "zi", "zile")) în care doar propune mutările, iar tu le aprobi")
+            }
             Button("Sortează ce există…", action: onSortExisting)
                 .disabled(state.isFolderExcluded(folder))
             Button {

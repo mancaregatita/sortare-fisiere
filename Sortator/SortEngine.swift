@@ -6,6 +6,8 @@ final class SortEngine {
     var onStatus: (@Sendable (String) -> Void)?
     /// Firmele (nume + CUI) găsite într-un document nou: cheia documentului și lista.
     var onParties: (@Sendable (String, [Party]) -> Void)?
+    /// Mod de probă: o mutare propusă (nu s-a mutat nimic).
+    var onProposed: (@Sendable (ProposedMove) -> Void)?
 
     private let queue = DispatchQueue(label: "ro.mancaregatita.sortator.engine", qos: .utility)
     private let fm = FileManager.default
@@ -245,6 +247,10 @@ final class SortEngine {
             markEvaluated(key)
             return
         }
+        if folder.inTrial {
+            propose(url, folder: destinationFolder, name: url.lastPathComponent, rule: "Proiect Ableton", key: key)
+            return
+        }
         do {
             let target = try moveFile(url, into: destinationFolder, name: url.lastPathComponent)
             onMoved?(HistoryEntry(
@@ -339,6 +345,10 @@ final class SortEngine {
             onStatus?("„\(url.lastPathComponent)” nu a fost mutat: regula „\(rule.name)” duce într-un folder exclus.")
             return
         }
+        if folder.inTrial {
+            propose(url, folder: destinationFolder, name: planned.name, rule: rule.name, key: key)
+            return
+        }
         do {
             let target = try moveFile(url, into: destinationFolder, name: planned.name)
             let entry = HistoryEntry(
@@ -354,6 +364,16 @@ final class SortEngine {
             markEvaluated(key)
             onStatus?("Nu am putut muta „\(url.lastPathComponent)”: \(error.localizedDescription)")
         }
+    }
+
+    /// Mod de probă: nu mută, doar propune; fișierul nu mai e evaluat din nou până nu se schimbă.
+    private func propose(_ url: URL, folder: URL, name: String, rule: String, key: String) {
+        markEvaluated(key)
+        onProposed?(ProposedMove(date: Date(),
+                                 sourcePath: url.path,
+                                 destinationFolderPath: folder.path,
+                                 newName: name,
+                                 ruleName: rule))
     }
 
     // MARK: Acțiuni cerute din interfață

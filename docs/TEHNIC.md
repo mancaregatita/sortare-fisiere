@@ -57,6 +57,7 @@ Schema `Sortator` rulează (Run, ⌘R) în configurația **Release**; Test și A
 | `Sortator/LegacyMigration.swift` | `LegacyNames.translate`: traduce numele vechi (română) în engleză, fără să deschidă fișierul |
 | `Sortator/InstallerNotifier.swift` | notificarea „Ai instalat X. Ștergi installerul?” (`UNUserNotificationCenter`, acțiuni Șterge / Păstrează) |
 | `Sortator/MigrateLegacySheet.swift` | fereastra „Mută folderele vechi în structura nouă…” |
+| `Sortator/ProposalsSheet.swift` | fereastra „Propuneri din modul de probă” (Mută bifate / Respinge bifate) |
 | `Sortator/RenameExistingSheet.swift` | fereastra „Redenumește documentele sortate…” |
 | `Sortator/DefaultRules.swift` | regulile inițiale (pe tipuri de fișiere), șablonul regulii de firmă, categoriile pentru `{tip}` |
 | `Sortator/Models.swift` | modelele Codable: foldere, reguli, condiții, firme, setări, config + migrare, excluderi, istoric, curățenie, firme găsite |
@@ -104,9 +105,10 @@ Fereastra principală se deschide la prima pornire și din meniu. Cât e deschis
    - iCloud: un fișier care se descarcă (`ubiquitousItemIsDownloading`) rămâne în așteptare. Un document doar în cloud (extensie din `PartyExtractor.documentExtensions`, sub 30 MB la zip, 100 MB în rest) primește `startDownloadingUbiquitousItem` dacă `downloadDocumentsToRead` e pornit și se așteaptă până la 600 s; după aceea se sortează doar după nume și extensie (`ContentExtractor` nu citește fișiere nedescărcate). Pozele, video-urile etc. se mută fără descărcare.
    - Proiect Ableton: se sare cât rulează Ableton (`NSWorkspace.runningApplications`, bundle id `com.ableton.live*` sau nume „Ableton Live…”); apoi `processAbletonProject` mută folderul întreg în `<folder urmărit>/Ableton Projects` (regula din istoric: „Proiect Ableton”).
 6. `process`: întâi se extrag firmele din document (pentru tab-ul Firme, doar extensiile `pdf, xml, zip, doc, docx, xls, xlsx, odt, ods, rtf, txt`), apoi prima regulă potrivită decide.
-7. Nu se mută dacă: nicio regulă nu se potrivește; destinația e goală; destinația este chiar folderul în care stă fișierul; destinația e într-un folder exclus (mesaj în bara de stare).
-8. Mutarea (`coordinatedMove`, `NSFileCoordinator` cu `.forMoving` / `.forReplacing`, ca iCloud să nu creeze copii „nume 2”): se creează folderul destinație, iar la nume existent se adaugă ` (2)`, ` (3)` etc. Se scrie o intrare în istoric. Dacă fișierul e în iCloud Drive și `freeSpaceAfterSorting` e pornit, intră în `pendingEvictions`: după 60 s se cheamă `evictUbiquitousItem` (copia locală se șterge, fișierul rămâne în iCloud), cu până la 20 de reîncercări la scanările complete.
-9. Erorile de mutare apar ca mesaj de stare; fișierul e marcat evaluat și nu se reîncearcă până nu se schimbă.
+7. **Mod de probă**: dacă folderul are `trialUntil` în viitor (`WatchedFolder.inTrial`), nu se mută nimic: se trimite un `ProposedMove` (`onProposed`) și fișierul e marcat evaluat. La fel pentru proiectele Ableton. Propunerile se aprobă din `ProposalsSheet` (prin `execute`, intră în Istoric) sau se resping (rămân pe loc, nu mai sunt propuse cât timp fișierul nu se schimbă). Folderele noi primesc `trialUntil = acum + trialDays` (implicit 3; 0 = fără probă).
+8. Nu se mută dacă: nicio regulă nu se potrivește; destinația e goală; destinația este chiar folderul în care stă fișierul; destinația e într-un folder exclus (mesaj în bara de stare).
+9. Mutarea (`coordinatedMove`, `NSFileCoordinator` cu `.forMoving` / `.forReplacing`, ca iCloud să nu creeze copii „nume 2”): se creează folderul destinație, iar la nume existent se adaugă ` (2)`, ` (3)` etc. Se scrie o intrare în istoric. Dacă fișierul e în iCloud Drive și `freeSpaceAfterSorting` e pornit, intră în `pendingEvictions`: după 60 s se cheamă `evictUbiquitousItem` (copia locală se șterge, fișierul rămâne în iCloud), cu până la 20 de reîncercări la scanările complete.
+10. Erorile de mutare apar ca mesaj de stare; fișierul e marcat evaluat și nu se reîncearcă până nu se schimbă.
 
 În pauză (`settings.paused`) watcher-ele se opresc și `tick` nu face nimic. Fișierele venite între timp se procesează după repornire (dacă au `addedToDirectoryDate` după `activeSince`).
 
@@ -160,7 +162,7 @@ Se face doar dacă regula are `rename = true`, setarea globală „Redenumește 
 
 ### Regulile inițiale (`DefaultRules.all`)
 
-Câte o regulă pe tip de fișier, destinația = numele grupului (subfolder în folderul urmărit). Doar „Documents” are redenumirea pornită.
+Prima e „Screenshots” (`DefaultRules.screenshots`): extensii `png, jpg, jpeg, heic, tiff` și numele începe cu `screenshot`, `screen shot` sau `captură de ecran` → `Images/Screenshots`. Apoi câte o regulă pe tip de fișier, destinația = numele grupului (subfolder în folderul urmărit). Doar „Documents” are redenumirea pornită.
 
 | Regulă / folder | Extensii |
 |---|---|
@@ -252,6 +254,10 @@ Textul extras e tăiat la 300.000 de caractere.
 - **Installere vechi**: extensii `dmg, pkg, mpkg`, adăugate de mai mult de `installerDays` zile (implicit 30, 7–180).
 - **Programare** (`AppState`): prima verificare la 2 minute după pornire, apoi la fiecare oră (ora locală a Mac-ului, fără cron). Căutarea de dubluri rulează dacă `autoDuplicateScan` e pornit și au trecut peste 12 ore de la ultima (ultima căutare e ținută doar în memorie, deci după fiecare repornire a aplicației se caută din nou). Verificarea installerelor rulează la fiecare oră dacă `askAboutInstallers` e pornit; dacă găsește, apare un dialog: „Mută la coș” / „Arată-mi lista” (amână 1 zi) / „Mai târziu” (amână 7 zile). Amânarea e în `UserDefaults`, cheia `installerSnoozeUntil`. Nimic nu rulează în pauză.
 - **Installere deschise** (`findOpenedInstallers`, la fiecare 10 minute, prima la 2 minute, dacă `notifyAfterInstall` e pornit): un installer din scope e raportat dacă Spotlight (`kMDItemLastUsedDate`) arată că a fost deschis după ce a fost adăugat și fie a apărut o aplicație nouă în `/Applications` sau `~/Applications` între −60 s și +6 h de la deschidere (și au trecut 10 minute), fie au trecut 24 de ore. Nu se folosește data ultimului acces (hash-ul pentru dubluri ar schimba-o). Se trimite notificarea „Ai instalat X. Ștergi installerul?” (categoria `SORTATOR_INSTALLER`, acțiuni Șterge → Coș / Păstrează; click → tab-ul Curățenie). Dacă notificările sunt refuzate, apare un `NSAlert`. Fiecare installer e anunțat o singură dată (`installere-notificate.json`, ultimele 500). Detectează doar instalările de pe Mac-ul pe care rulează Sortator.
+- **Versiuni vechi** (`findOldVersions`, `versionKey`): în nume (fără extensie) se caută ultimul `v` + 1–4 cifre, cu separator înainte (început, spațiu, `-`, `_`, `.`) și după (final, spațiu, `-`, `_`, `(`, sau `.` urmat de altceva decât o cifră; `v1.2` nu e versiune). Cheia = numele cu versiunea înlocuită de `v#` + extensia, cu minim 3 litere. Grupuri cu ≥ 2 fișiere, sortate descrescător după versiune (apoi după data modificării); primul rămâne. În interfață, la mutare rămâne mereu cel puțin un fișier din grup. Setarea `findOldVersions`.
+- **Capturi de ecran vechi** (`findOldScreenshots`): imagini al căror nume normalizat începe cu `screenshot`, `screen shot` sau `captura de ecran`, adăugate de mai mult de `screenshotDays` zile (implicit 30). Setarea `findOldScreenshots`.
+- Versiunile și capturile se caută la fiecare `periodicCleanup` (oră) și la deschiderea tab-ului; dacă există, cel mult o notificare la 24 h (`UserDefaults` `cleanupNoticeAt`), click → Curățenie. Nu există dialog care să mute singur.
+- **Rezumatul de seară** (`checkDailySummary`, la fiecare 10 minute): după ora `summaryHour` (implicit 20), o dată pe zi (`UserDefaults` `lastSummaryDay`): mutări de azi neanulate (câte în `Firme/`), propuneri de aprobat, dubluri, versiuni vechi, capturi vechi, installere vechi. Fără nimic de spus, nu se trimite. Click → Foldere (dacă sunt propuneri), Curățenie sau Istoric.
 - Mutarea se face doar la Coș (`trashItem`), niciodată ștergere definitivă.
 
 ## Istoric și anulare
@@ -267,18 +273,19 @@ Toate în `~/Library/Application Support/Sortator/` (buton „Deschide” în Se
 
 | Fișier | Conținut |
 |---|---|
-| `config.json` | `AppConfig`: foldere urmărite, reguli, setări, foldere excluse, firmele mele, `version` (acum 3). Salvat la orice modificare |
+| `config.json` | `AppConfig`: foldere urmărite (cu `trialUntil`), reguli, setări, foldere excluse, firmele mele, `version` (acum 4). Salvat la orice modificare |
 | `history.json` | istoricul mutărilor (max 1.000) |
 | `firme-gasite.json` | `DiscoveryStore`: firme găsite, chei de documente numărate, total documente |
+| `propuneri.json` | mutările propuse în modul de probă (max 2.000) |
 | `installere-notificate.json` | installerele deja anunțate (max 500) |
 | `engine-state.json` | `evaluated` (chei deja evaluate, max ~3.000, redus la 2.000) și `ignored` (fișiere readuse) |
 | `config-rezerva-<timestamp>.json` | copie a unui `config.json` care nu a putut fi citit; aplicația pornește apoi cu configurația implicită |
 
-Alte locuri: `UserDefaults` (domeniul `ro.mancaregatita.sortator`): `installerSnoozeUntil` și poziția ferestrei (`SortatorMainWindow`).
+Alte locuri: `UserDefaults` (domeniul `ro.mancaregatita.sortator`): `installerSnoozeUntil`, `cleanupNoticeAt`, `lastSummaryDay` și poziția ferestrei (`SortatorMainWindow`).
 
 ### Migrarea configurației
 
-`AppConfig.migrate`: de la versiunea 1 la 2, regulile cu destinația `Firme/…` fără variabile primesc `/{tipdoc}` și redenumire; regula „Documente” primește redenumire; dacă lista de firme e goală, se construiește din regulile `Firme/…`. De la 2 la 3 (structura în engleză): se scot regulile inițiale vechi (nume din `legacyTypeRuleNames` cu destinația egală cu numele), se adaugă regulile noi lipsă (`DefaultRules.typeRules`), iar `Firme/X/{tipdoc}` devine `Firme/X/{an}/{tipdoc}`. Regulile utilizatorului și ale firmelor rămân. Câmpurile lipsă din JSON primesc valorile implicite (decodare tolerantă), inclusiv setările noi `freeSpaceAfterSorting`, `downloadDocumentsToRead`, `notifyAfterInstall` (toate pornite).
+`AppConfig.migrate`: de la versiunea 1 la 2, regulile cu destinația `Firme/…` fără variabile primesc `/{tipdoc}` și redenumire; regula „Documente” primește redenumire; dacă lista de firme e goală, se construiește din regulile `Firme/…`. De la 2 la 3 (structura în engleză): se scot regulile inițiale vechi (nume din `legacyTypeRuleNames` cu destinația egală cu numele), se adaugă regulile noi lipsă (`DefaultRules.typeRules`), iar `Firme/X/{tipdoc}` devine `Firme/X/{an}/{tipdoc}`. Regulile utilizatorului și ale firmelor rămân. De la 3 la 4: se inserează regula „Screenshots” înaintea regulii „Images” și toate folderele active pornesc în modul de probă (`trialDays` zile), după sortarea greșită din 25 noiembrie. Câmpurile lipsă din JSON primesc valorile implicite (decodare tolerantă), inclusiv setările noi `freeSpaceAfterSorting`, `downloadDocumentsToRead`, `notifyAfterInstall` (toate pornite).
 
 ### Mutarea folderelor vechi (`planLegacyMigration` / `executeMigration`, foaia `MigrateLegacySheet`)
 
@@ -373,6 +380,6 @@ Nu există target de teste sau teste automate în repo. Verificare manuală: tab
 | `README.md` (versiunea anterioară) | pornire în Xcode și descrierea funcțiilor; conținutul a fost mutat în `docs/UTILIZARE.md` și în acest fișier |
 | commit `33dc182` | scoaterea actualizărilor automate (Sparkle) și a publicării prin GitHub Actions; actualizarea devine manuală |
 | 19 noiembrie 2026 | redenumire `Tip Număr – Partener – Dată`, redenumirea documentelor deja sortate |
-| 25 noiembrie 2026 | structura în engleză, iCloud Drive, Keep, Ableton Projects, notificare după instalare, mutarea folderelor vechi |
+| 25 noiembrie 2026 | structura în engleză, iCloud Drive, Keep, Ableton Projects, notificare după instalare, mutarea folderelor vechi; apoi: firmele primesc doar documente recunoscute, readucere în masă, mod de probă, versiuni vechi, capturi de ecran, rezumat de seară |
 
 Nu există alte fișiere `ACTUALIZARE-*`, `CITESTE-MA-*`, `GHID-*` sau `AGENTS.md` în repo.

@@ -11,6 +11,11 @@ struct SettingsView: View {
                 Stepper(value: $state.config.settings.delaySeconds, in: 1...60, step: 1) {
                     Text("Așteaptă \(Int(state.config.settings.delaySeconds)) secunde după ce un fișier nu se mai schimbă")
                 }
+                Stepper(value: $state.config.settings.trialDays, in: 0...30, step: 1) {
+                    Text(state.config.settings.trialDays == 0
+                         ? "Mod de probă pentru folderele noi: oprit"
+                         : "Mod de probă pentru folderele noi: \(RO.count(state.config.settings.trialDays, "zi", "zile")) (doar propune, tu aprobi)")
+                }
             }
 
             Section("Citirea conținutului (pentru condițiile „Conținutul conține”)") {
@@ -52,12 +57,26 @@ struct SettingsView: View {
 
             Section("Curățenie") {
                 Toggle("Caută dubluri automat (de două ori pe zi)", isOn: $state.config.settings.autoDuplicateScan)
+                Toggle("Versiuni vechi (tema-v21 … tema-v54): păstrează-o pe cea mai nouă, propune-le pe celelalte la coș", isOn: $state.config.settings.findOldVersions)
+                Toggle("Capturi de ecran vechi: propune-le la coș", isOn: $state.config.settings.findOldScreenshots)
+                Stepper(value: $state.config.settings.screenshotDays, in: 7...365, step: 1) {
+                    Text("Captură veche = mai veche de \(state.config.settings.screenshotDays) de zile")
+                }
+                .disabled(!state.config.settings.findOldScreenshots)
                 Toggle("Notificare după instalare: „Ai instalat X. Ștergi installerul?”", isOn: $state.config.settings.notifyAfterInstall)
                 Toggle("Întreabă-mă de installerele vechi (.dmg, .pkg)", isOn: $state.config.settings.askAboutInstallers)
                 Stepper(value: $state.config.settings.installerDays, in: 7...180, step: 1) {
                     Text("Installer vechi = mai vechi de \(state.config.settings.installerDays) de zile")
                 }
                 .disabled(!state.config.settings.askAboutInstallers)
+            }
+
+            Section("Rezumat") {
+                Toggle("Notificare seara cu ce s-a sortat și ce e de verificat", isOn: $state.config.settings.dailySummary)
+                Stepper(value: $state.config.settings.summaryHour, in: 6...23, step: 1) {
+                    Text("Ora rezumatului: \(state.config.settings.summaryHour):00")
+                }
+                .disabled(!state.config.settings.dailySummary)
             }
 
             Section("Pornire") {

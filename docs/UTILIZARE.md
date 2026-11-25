@@ -9,7 +9,7 @@ Sortator stă în bara de sus a Mac-ului (lângă ceas) și pune ordine în fold
   | Folder | Ce ajunge acolo |
   |---|---|
   | `Firme/<firmă>/<an>/Invoices · Contracts · Bank · Receipts · Certificates · Authorities · Other` | documentele firmelor tale |
-  | `Images`, `Videos` | toate la un loc (le ordonezi în Finder după Modified) |
+  | `Images`, `Videos` | toate la un loc (le ordonezi în Finder după Modified); capturile de ecran în `Images/Screenshots` |
   | `Audio` | muzică și înregistrări |
   | `Documents` | orice document care nu ține de firme (PDF, Word, Excel, Pages, Numbers, Keynote, XML…) |
   | `Archives` | zip, rar, 7z… |
@@ -24,7 +24,10 @@ Sortator stă în bara de sus a Mac-ului (lângă ceas) și pune ordine în fold
 - poate redenumi și documentele deja sortate: tab-ul **Foldere** → **Redenumește documentele sortate…** (sau din **Setări**), cu listă de previzualizare și bife; orice redenumire se anulează din **Istoric**;
 - găsește singură firmele din documente și te întreabă care sunt ale tale;
 - găsește dublurile și installerele vechi și te întreabă ce muți la Coș; după ce instalezi o aplicație, o notificare te întreabă dacă ștergi installerul;
-- ține istoricul: orice mutare se poate anula.
+- **mod de probă**: un folder nou (și, după actualizarea din 25 noiembrie, cele existente) stă 3 zile în probă: Sortator nu mută nimic singur, doar propune, iar tu aprobi;
+- găsește versiunile vechi ale aceluiași fișier (`tema-v21` … `tema-v54`) și capturile de ecran mai vechi de 30 de zile și te întreabă ce muți la Coș;
+- seara (implicit la 20:00) trimite un rezumat: ce s-a sortat, ce e de aprobat, ce e de verificat;
+- ține istoricul: orice mutare se poate anula, una câte una sau toate deodată.
 
 Totul rulează pe Mac, fără internet. Nimic nu se șterge definitiv: ce alegi să arunci merge la Coș.
 
@@ -82,6 +85,7 @@ Jos, în fiecare tab, bara de stare arată Activ / În pauză, ultimul mesaj și
 - Doar fișierele care apar **după** ce ai adăugat (sau reactivat) folderul sunt mutate automat. Ce era deja acolo rămâne neatins.
 - **Sortează ce există…**: arată lista cu ce s-ar muta și unde, cu numele nou. Debifezi ce vrei să rămână, apoi **Mută**. Nu mută nimic înainte să confirmi.
 - **Adaugă iCloud Drive** (apare doar dacă iCloud Drive e pornit pe Mac).
+- **Mod de probă**: un folder nou pornește în probă (implicit 3 zile, se schimbă în Setări → Funcționare). Sub nume scrie „Mod de probă până pe …”. Fișierele noi nu se mută: apare banda „Mod de probă: N mutări așteaptă aprobarea ta” → **Vezi propunerile…**: bifezi ce e corect, **Mută bifate** sau **Respinge bifate** (rămân pe loc și nu mai sunt propuse). **Termină proba** pornește mutarea automată; **Mod de probă** o repornește.
 - Comutatorul **Activ** oprește/pornește un singur folder.
 - Se mută doar fișierele aflate direct în folder (și pachetele Pages/Numbers/Keynote). Subfolderele și aplicațiile (.app) nu se mută niciodată; excepție: proiectele Ableton (folder cu `Ableton Project Info`), mutate întregi în `Ableton Projects` doar cât Ableton e închis.
 - În fiecare folder urmărit se creează `Keep`: ce pui acolo nu e mutat, redenumit sau verificat la dubluri.
@@ -150,6 +154,10 @@ Jos, în fiecare tab, bara de stare arată Activ / În pauză, ultimul mesaj și
 
 **Dubluri**: fișiere cu exact același conținut, din folderele create de Sortator (Images, Documents, Firme…) și din rădăcina folderelor urmărite. Folderele tale și `Keep` nu sunt verificate, nici fișierele aflate doar în iCloud (ar trebui descărcate). Cel mai vechi exemplar rămâne debifat; celelalte sunt bifate. Verifici, apoi **Mută la coș**. Din fiecare grup rămâne mereu cel puțin un exemplar.
 
+**Versiuni vechi**: același fișier în mai multe versiuni (un `v` urmat de număr în nume, ex. `tema-v21`, `tema-v54`). Cea mai nouă rămâne, celelalte sunt bifate. **Mută la coș**.
+
+**Capturi de ecran vechi**: capturi (Screenshot…, Captură de ecran…) mai vechi de 30 de zile (se schimbă în Setări). Bifezi, **Mută la coș**.
+
 **Installere vechi**: fișiere .dmg și .pkg mai vechi de 30 de zile (se schimbă în Setări). **Verifică acum**, bifezi, **Mută la coș**.
 
 ### Istoric
@@ -164,11 +172,12 @@ Jos, în fiecare tab, bara de stare arată Activ / În pauză, ultimul mesaj și
 
 | Secțiune | Ce reglezi |
 |---|---|
-| Funcționare | Pauză; câte secunde așteaptă după ce un fișier nu se mai schimbă (implicit 3) |
+| Funcționare | Pauză; câte secunde așteaptă după ce un fișier nu se mai schimbă (implicit 3); câte zile stă un folder nou în modul de probă (implicit 3, 0 = fără probă) |
 | Citirea conținutului | PDF, OCR pe PDF scanate, OCR pe poze, Word/Excel/PowerPoint/OpenOffice, XML din arhive .zip, câte pagini citește din fiecare PDF (implicit 3) |
 | Redenumire și tipul documentului | redenumirea pornită/oprită pentru toate regulile; AI-ul Apple ca rezervă (doar macOS 26 cu Apple Intelligence pornit; starea e afișată) |
 | iCloud Drive | descarcă documentele doar din iCloud ca să le citească; eliberează spațiul după sortare |
-| Curățenie | căutare automată de dubluri; notificare după instalare; întrebare despre installerele vechi; după câte zile un installer e „vechi” |
+| Curățenie | căutare automată de dubluri; versiuni vechi; capturi de ecran vechi și după câte zile (implicit 30); notificare după instalare; întrebare despre installerele vechi; după câte zile un installer e „vechi” |
+| Rezumat | notificarea de seară și ora ei (implicit 20) |
 | Pornire | Mută în Aplicații; Pornește automat la deschiderea Mac-ului |
 | Date | **Deschide** folderul cu setările, regulile și istoricul |
 
@@ -178,12 +187,15 @@ Jos, în fiecare tab, bara de stare arată Activ / În pauză, ultimul mesaj și
 - La fiecare document nou, aplicația notează firmele găsite (pentru tab-ul Firme).
 - La 2 minute după pornire și apoi la fiecare oră: caută dubluri (cel mult o dată la 12 ore) și verifică installerele vechi. Dacă găsește installere vechi, te întreabă: **Mută la coș**, **Arată-mi lista** (nu mai întreabă o zi) sau **Mai târziu** (nu mai întreabă o săptămână).
 - La fiecare 10 minute verifică installerele deschise: dacă a apărut o aplicație nouă în Aplicații (sau au trecut 24 de ore de la deschidere), primești notificarea „Ai instalat X. Ștergi installerul?” cu **Șterge** (la Coș) și **Păstrează**. Funcționează doar pentru ce instalezi pe Mac-ul pe care rulează Sortator.
+- O dată pe oră caută versiunile vechi și capturile de ecran vechi; dacă găsește, cel mult o notificare pe zi („De curățat: …”), click → Curățenie.
+- Seara, la ora din Setări → Rezumat, o notificare „Sortator azi”: câte fișiere s-au sortat (câte la firme), câte mutări așteaptă aprobarea, ce e de verificat. Click → tab-ul potrivit.
 - În pauză nu se face nimic din toate acestea. Fișierele venite în pauză se sortează după ce repornești.
 
 ## Când ceva nu merge
 
 | Ce vezi | Cauza probabilă | Ce faci |
 |---|---|---|
+| Nu se mută nimic, dar apar „propuneri” | Folderul e în modul de probă | Foldere → **Vezi propunerile…** și aprobă; sau **Termină proba** |
 | Nu se mută nimic | Aplicația e în pauză | Meniul de sus → **Repornește sortarea** (sau comutatorul Pauză din fereastră) |
 | Nu se mută nimic dintr-un folder | macOS nu i-a dat acces la folder (mai ales după o actualizare din Xcode) | System Settings → Privacy & Security → Files & Folders → Sortator: pornește accesul la folderul respectiv. Apoi ieși și repornește Sortator |
 | Fișierele vechi din folder nu se mută | Normal: se mută doar cele venite după adăugarea folderului | Foldere → **Sortează ce există…** |

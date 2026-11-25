@@ -138,6 +138,63 @@ final class CleanupScanner {
         }
     }
 
+    // MARK: Versiuni vechi
+
+    /// „tema-sarbatori-2026-v21-spiridusi.zip” → („tema-sarbatori-2026-v#-spiridusi.zip”, 21).
+    /// Versiunea e un „v” urmat de cifre, cu separator înainte (spațiu, -, _, .) și după (sau finalul numelui).
+    static func versionKey(_ fileName: String) -> (key: String, version: Int)? {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        let base = (fileName as NSString).deletingPathExtension
+        guard let regex = try? NSRegularExpression(pattern: "(?i)(?:^|(?<=[\\s_.\\-]))v([0-9]{1,4})(?=$|[\\s_\\-(]|\\.(?![0-9]))") else { return nil }
+        let ns = base as NSString
+        let matches = regex.matches(in: base, range: NSRange(location: 0, length: ns.length))
+        guard let match = matches.last,
+              let version = Int(ns.substring(with: match.range(at: 1))) else { return nil }
+        let key = ns.replacingCharacters(in: match.range, with: "v#").lowercased()
+        // Numele trebuie să aibă și altceva în afară de versiune (ex. nu doar „v2.zip”).
+        guard key.filter({ $0.isLetter }).count >= 3 else { return nil }
+        return (ext.isEmpty ? key : key + "." + ext, version)
+    }
+
+    /// Fișiere cu aceeași denumire și versiuni diferite; în fiecare grup, cea mai nouă versiune e prima.
+    func findOldVersions(scope: CleanupScope, completion: @escaping @Sendable ([VersionGroup]) -> Void) {
+        queue.async {
+            var byKey: [String: [VersionFile]] = [:]
+            for item in self.enumerate(scope, token: nil, skipCloudOnly: false) {
+                guard let found = Self.versionKey(item.url.lastPathComponent) else { continue }
+                byKey[found.key, default: []].append(VersionFile(url: item.url, version: found.version, size: item.size, modified: item.modified))
+            }
+            let groups = byKey
+                .filter { $0.value.count > 1 }
+                .map { key, files in
+                    VersionGroup(key: key, files: files.sorted {
+                        $0.version != $1.version ? $0.version > $1.version : $0.modified > $1.modified
+                    })
+                }
+                .sorted { $0.files.count > $1.files.count }
+            completion(groups)
+        }
+    }
+
+    // MARK: Capturi de ecran
+
+    static func isScreenshot(_ url: URL) -> Bool {
+        guard FileContext.imageExtensions.contains(url.pathExtension.lowercased()) else { return false }
+        let name = TextNormalizer.normalize(url.deletingPathExtension().lastPathComponent)
+        return name.hasPrefix(" screenshot") || name.hasPrefix(" screen shot") || name.hasPrefix(" captura de ecran")
+    }
+
+    func findOldScreenshots(scope: CleanupScope, days: Int, completion: @escaping @Sendable ([OldFile]) -> Void) {
+        queue.async {
+            let limit = Date().addingTimeInterval(-Double(max(1, days)) * 86_400)
+            let old = self.enumerate(scope, token: nil, skipCloudOnly: false)
+                .filter { $0.added < limit && Self.isScreenshot($0.url) }
+                .sorted { $0.added < $1.added }
+                .map { OldFile(url: $0.url, size: $0.size, added: $0.added) }
+            completion(old)
+        }
+    }
+
     /// Citește documentele existente din folderele urmărite și găsește firmele din ele.
     /// Cele mai noi documente sunt primele; se opresc la `limit`.
     func scanCompanies(scope: CleanupScope,

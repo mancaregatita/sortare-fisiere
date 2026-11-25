@@ -37,8 +37,26 @@ enum DefaultRules {
     /// sau le adaugi tu. Regulile inițiale sunt doar cele pe tipuri de fișiere.
     static var companies: [CompanyProfile] { [] }
 
+    static let screenshotsRuleName = "Screenshots"
+
+    /// Capturile de ecran (macOS în engleză și în română) separat de poze: Images/Screenshots.
+    static var screenshots: SortRule {
+        SortRule(
+            name: screenshotsRuleName,
+            matchMode: .all,
+            conditions: [
+                RuleCondition(field: .ext, keywords: "png, jpg, jpeg, heic, tiff"),
+                RuleCondition(field: .name, keywords: screenshotNameKeywords)
+            ],
+            destination: "Images/Screenshots"
+        )
+    }
+
+    static let screenshotNameKeywords = "screenshot*, screen shot*, captura de ecran*, captură de ecran*"
+
     static var all: [SortRule] {
-        typeRules
+        // Screenshots înaintea regulii Images, ca să nu ajungă printre poze.
+        [screenshots] + typeRules
     }
 
     /// Unde se inserează regula unei firme noi: după celelalte reguli de firme, înaintea celor pe tipuri.

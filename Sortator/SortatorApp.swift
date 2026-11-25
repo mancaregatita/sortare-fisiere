@@ -32,6 +32,12 @@ struct MenuContent: View {
             }
             Divider()
         }
+        if !state.proposals.isEmpty {
+            Button("Mod de probă — de aprobat: \(state.proposals.count)…") {
+                state.showMainWindow(tab: .folders)
+                state.showProposals = true
+            }
+        }
         if !state.companySuggestions.isEmpty {
             Button("Firme de confirmat: \(state.companySuggestions.count)…") {
                 state.showMainWindow(tab: .companies)
@@ -42,12 +48,22 @@ struct MenuContent: View {
                 state.showMainWindow(tab: .cleanup)
             }
         }
+        if state.oldVersionCount > 0 {
+            Button("Versiuni vechi: \(state.oldVersionCount)…") {
+                state.showMainWindow(tab: .cleanup)
+            }
+        }
+        if !state.oldScreenshots.isEmpty {
+            Button("Capturi de ecran vechi: \(state.oldScreenshots.count)…") {
+                state.showMainWindow(tab: .cleanup)
+            }
+        }
         if !state.oldInstallers.isEmpty {
             Button("Installere vechi: \(state.oldInstallers.count)…") {
                 state.showMainWindow(tab: .cleanup)
             }
         }
-        if !state.companySuggestions.isEmpty || !state.duplicateGroups.isEmpty || !state.oldInstallers.isEmpty {
+        if hasAlerts {
             Divider()
         }
         Button(state.config.settings.paused ? "Repornește sortarea" : "Pune pe pauză") {
@@ -65,6 +81,11 @@ struct MenuContent: View {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+
+    private var hasAlerts: Bool {
+        !state.proposals.isEmpty || !state.companySuggestions.isEmpty || !state.duplicateGroups.isEmpty
+            || state.oldVersionCount > 0 || !state.oldScreenshots.isEmpty || !state.oldInstallers.isEmpty
     }
 
     private var headline: String {

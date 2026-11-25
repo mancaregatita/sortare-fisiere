@@ -8,6 +8,10 @@ struct WatchedFolder: Codable, Identifiable, Hashable {
     var enabled: Bool = true
     /// Doar fișierele adăugate în folder după acest moment sunt sortate automat.
     var activeSince: Date = Date()
+    /// Mod de probă: până la această dată Sortator doar propune mutările, tu le aprobi.
+    var trialUntil: Date? = nil
+
+    var inTrial: Bool { (trialUntil ?? .distantPast) > Date() }
 
     var url: URL { URL(fileURLWithPath: path, isDirectory: true) }
     var displayName: String { FileManager.default.displayName(atPath: path) }
@@ -161,6 +165,16 @@ struct AppSettings: Codable, Hashable {
     var downloadDocumentsToRead: Bool = true
     /// Notificare „Ai instalat X. Ștergi installerul?”.
     var notifyAfterInstall: Bool = true
+    /// Câte zile stă un folder nou în modul de probă (0 = fără probă).
+    var trialDays: Int = 3
+    /// Versiuni vechi ale aceluiași fișier (tema-v21, tema-v54): arată-le pe cele depășite.
+    var findOldVersions: Bool = true
+    /// Capturi de ecran mai vechi de `screenshotDays` zile: propune mutarea la coș.
+    var findOldScreenshots: Bool = true
+    var screenshotDays: Int = 30
+    /// Rezumatul de seară (notificare).
+    var dailySummary: Bool = true
+    var summaryHour: Int = 20
 
     init() {}
 
@@ -175,6 +189,12 @@ struct AppSettings: Codable, Hashable {
         freeSpaceAfterSorting = try c.decodeIfPresent(Bool.self, forKey: .freeSpaceAfterSorting) ?? d.freeSpaceAfterSorting
         downloadDocumentsToRead = try c.decodeIfPresent(Bool.self, forKey: .downloadDocumentsToRead) ?? d.downloadDocumentsToRead
         notifyAfterInstall = try c.decodeIfPresent(Bool.self, forKey: .notifyAfterInstall) ?? d.notifyAfterInstall
+        trialDays = try c.decodeIfPresent(Int.self, forKey: .trialDays) ?? d.trialDays
+        findOldVersions = try c.decodeIfPresent(Bool.self, forKey: .findOldVersions) ?? d.findOldVersions
+        findOldScreenshots = try c.decodeIfPresent(Bool.self, forKey: .findOldScreenshots) ?? d.findOldScreenshots
+        screenshotDays = try c.decodeIfPresent(Int.self, forKey: .screenshotDays) ?? d.screenshotDays
+        dailySummary = try c.decodeIfPresent(Bool.self, forKey: .dailySummary) ?? d.dailySummary
+        summaryHour = try c.decodeIfPresent(Int.self, forKey: .summaryHour) ?? d.summaryHour
         paused = try c.decodeIfPresent(Bool.self, forKey: .paused) ?? d.paused
         delaySeconds = try c.decodeIfPresent(Double.self, forKey: .delaySeconds) ?? d.delaySeconds
         readPDFText = try c.decodeIfPresent(Bool.self, forKey: .readPDFText) ?? d.readPDFText
@@ -193,10 +213,11 @@ struct AppConfig: Codable {
     /// Foldere pe care aplicația nu le atinge niciodată: nu ia fișiere din ele și nu pune fișiere în ele.
     var excludedFolders: [String] = AppConfig.defaultExcludedFolders
     var companies: [CompanyProfile] = DefaultRules.companies
-    /// 1 = prima versiune; 2 = redenumire + tip document; 3 = structura în engleză (Firme/<firmă>/<an>/<tip>).
+    /// 1 = prima versiune; 2 = redenumire + tip document; 3 = structura în engleză (Firme/<firmă>/<an>/<tip>);
+    /// 4 = Screenshots separat + mod de probă.
     var version: Int = AppConfig.currentVersion
 
-    static let currentVersion = 3
+    static let currentVersion = 4
 
     static let defaultExcludedFolders: [String] = [
         "/Applications",
@@ -262,6 +283,18 @@ struct AppConfig: Codable {
                 }
             }
         }
+        if c.version < 4 {
+            // Capturile de ecran în Images/Screenshots: regula stă înaintea celei pentru Images.
+            if !c.rules.contains(where: { $0.name == DefaultRules.screenshotsRuleName }) {
+                let index = c.rules.firstIndex(where: { $0.name == "Images" }) ?? c.rules.count
+                c.rules.insert(DefaultRules.screenshots, at: index)
+            }
+            // După sortarea greșită din 25 noiembrie: folderele existente pornesc în modul de probă.
+            let until = Date().addingTimeInterval(Double(max(1, c.settings.trialDays)) * 86_400)
+            for index in c.folders.indices where c.folders[index].enabled {
+                c.folders[index].trialUntil = until
+            }
+        }
         c.version = currentVersion
         return (c, true)
     }
@@ -308,6 +341,25 @@ struct HistoryEntry: Codable, Identifiable, Hashable {
     var undone: Bool = false
 }
 
+/// O mutare propusă în modul de probă: așteaptă aprobarea ta.
+struct ProposedMove: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var date: Date
+    var sourcePath: String
+    var destinationFolderPath: String
+    var newName: String
+    var ruleName: String
+
+    var fileName: String { URL(fileURLWithPath: sourcePath).lastPathComponent }
+
+    var planned: PlannedMove {
+        PlannedMove(source: URL(fileURLWithPath: sourcePath),
+                    destinationFolder: URL(fileURLWithPath: destinationFolderPath, isDirectory: true),
+                    newName: newName,
+                    ruleName: ruleName)
+    }
+}
+
 struct PlannedMove: Identifiable, Hashable {
     let id = UUID()
     let source: URL
@@ -352,6 +404,29 @@ struct OldInstaller: Identifiable, Hashable {
     let url: URL
     let size: Int64
     let added: Date
+}
+
+/// Un fișier vechi propus pentru coș (ex. o captură de ecran).
+struct OldFile: Identifiable, Hashable {
+    var id: String { url.path }
+    let url: URL
+    let size: Int64
+    let added: Date
+}
+
+/// Versiunile aceluiași fișier (ex. tema-v21 … tema-v54). Prima e cea mai nouă și rămâne.
+struct VersionGroup: Identifiable, Hashable {
+    var id: String { key }
+    let key: String
+    let files: [VersionFile]
+}
+
+struct VersionFile: Identifiable, Hashable {
+    var id: String { url.path }
+    let url: URL
+    let version: Int
+    let size: Int64
+    let modified: Date
 }
 
 struct EngineError: LocalizedError {

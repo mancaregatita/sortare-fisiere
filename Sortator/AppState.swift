@@ -33,6 +33,13 @@ final class AppState: ObservableObject {
     @Published var discovery = DiscoveryStore()
     @Published var companyScanRunning = false
     @Published var companyScanProgress = ""
+    /// Mod de probă: mutările propuse, care așteaptă aprobarea.
+    @Published var proposals: [ProposedMove] = []
+    @Published var showProposals = false
+    @Published var versionGroups: [VersionGroup] = []
+    @Published var versionScanRunning = false
+    @Published var oldScreenshots: [OldFile] = []
+    @Published var screenshotScanRunning = false
 
     let engine = SortEngine()
     let cleanup = CleanupScanner()
@@ -46,6 +53,9 @@ final class AppState: ObservableObject {
     private static let discoveryFile = "firme-gasite.json"
 
     private static let installerSnoozeKey = "installerSnoozeUntil"
+    private static let proposalsFile = "propuneri.json"
+    private static let cleanupNoticeKey = "cleanupNoticeAt"
+    private static let summaryDayKey = "lastSummaryDay"
 
     private init() {
         var firstRun = false
@@ -70,6 +80,7 @@ final class AppState: ObservableObject {
         }
         history = Storage.load([HistoryEntry].self, from: "history.json") ?? []
         discovery = Storage.load(DiscoveryStore.self, from: Self.discoveryFile) ?? DiscoveryStore()
+        proposals = Storage.load([ProposedMove].self, from: Self.proposalsFile) ?? []
         launchAtLogin = SMAppService.mainApp.status == .enabled
         if firstRun || migrated {
             Storage.save(config, to: "config.json")
@@ -86,6 +97,9 @@ final class AppState: ObservableObject {
         engine.onParties = { key, parties in
             Task { @MainActor in AppState.shared.recordParties(DiscoveryKey.fromEngineKey(key), parties) }
         }
+        engine.onProposed = { proposal in
+            Task { @MainActor in AppState.shared.recordProposal(proposal) }
+        }
         engine.start(config: config)
 
         if firstRun {
@@ -94,8 +108,12 @@ final class AppState: ObservableObject {
 
         // Installere deschise: verificare la 10 minute (notificarea „Ai instalat X. Ștergi installerul?”).
         InstallerNotifier.shared.setUp()
+        // Tot la 10 minute: rezumatul de seară, dacă a venit ora.
         installerTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { _ in
-            Task { @MainActor in AppState.shared.checkOpenedInstallers() }
+            Task { @MainActor in
+                AppState.shared.checkOpenedInstallers()
+                AppState.shared.checkDailySummary()
+            }
         }
 
         // Curățenie: prima verificare la 2 minute după pornire, apoi o dată pe oră.
@@ -120,6 +138,161 @@ final class AppState: ObservableObject {
         if config.settings.askAboutInstallers {
             checkInstallers(ask: true)
         }
+        checkVersionsAndScreenshots(notify: true)
+    }
+
+    // MARK: Versiuni vechi și capturi de ecran
+
+    /// Caută versiunile vechi, apoi capturile vechi; la final, cel mult o notificare pe zi.
+    func checkVersionsAndScreenshots(notify: Bool) {
+        let settings = config.settings
+        let scope = cleanupScope
+        if settings.findOldVersions, !versionScanRunning {
+            versionScanRunning = true
+            cleanup.findOldVersions(scope: scope) { groups in
+                Task { @MainActor in
+                    let state = AppState.shared
+                    state.versionGroups = groups
+                    state.versionScanRunning = false
+                    state.checkScreenshots(notify: notify)
+                }
+            }
+        } else {
+            if !settings.findOldVersions { versionGroups = [] }
+            checkScreenshots(notify: notify)
+        }
+    }
+
+    private func checkScreenshots(notify: Bool) {
+        guard config.settings.findOldScreenshots, !screenshotScanRunning else {
+            if !config.settings.findOldScreenshots { oldScreenshots = [] }
+            if notify { noticeCleanupFindings() }
+            return
+        }
+        screenshotScanRunning = true
+        cleanup.findOldScreenshots(scope: cleanupScope, days: config.settings.screenshotDays) { list in
+            Task { @MainActor in
+                let state = AppState.shared
+                state.oldScreenshots = list
+                state.screenshotScanRunning = false
+                if notify { state.noticeCleanupFindings() }
+            }
+        }
+    }
+
+    /// Câte fișiere pot merge la coș dintre versiunile vechi (toate în afară de cea mai nouă).
+    var oldVersionCount: Int {
+        versionGroups.reduce(0) { $0 + $1.files.count - 1 }
+    }
+
+    private func noticeCleanupFindings() {
+        guard !config.settings.paused else { return }
+        let versions = oldVersionCount
+        let screenshots = oldScreenshots.count
+        guard versions + screenshots > 0 else { return }
+        if let last = UserDefaults.standard.object(forKey: Self.cleanupNoticeKey) as? Date,
+           Date().timeIntervalSince(last) < 86_400 { return }
+        UserDefaults.standard.set(Date(), forKey: Self.cleanupNoticeKey)
+        var parts: [String] = []
+        if versions > 0 { parts.append(RO.count(versions, "versiune veche", "versiuni vechi")) }
+        if screenshots > 0 { parts.append(RO.count(screenshots, "captură de ecran veche", "capturi de ecran vechi")) }
+        InstallerNotifier.shared.notifyInfo(
+            id: "sortator-cleanup",
+            title: "De curățat: " + parts.joined(separator: ", "),
+            body: "Le vezi în Curățenie și alegi ce muți la coș. Nu se șterge nimic singur.",
+            tab: .cleanup
+        )
+    }
+
+    // MARK: Rezumatul de seară
+
+    func checkDailySummary() {
+        let settings = config.settings
+        guard settings.dailySummary, !settings.paused else { return }
+        let now = Date()
+        guard Calendar.current.component(.hour, from: now) >= settings.summaryHour else { return }
+        let today = DocumentInfo.dayFormatter.string(from: now)
+        guard UserDefaults.standard.string(forKey: Self.summaryDayKey) != today else { return }
+        UserDefaults.standard.set(today, forKey: Self.summaryDayKey)
+
+        let start = Calendar.current.startOfDay(for: now)
+        let moved = history.filter { $0.date >= start && !$0.undone }
+        let toCompanies = moved.filter { $0.toPath.contains("/\(ManagedFolders.companies)/") }.count
+        var lines: [String] = []
+        if !moved.isEmpty {
+            var line = "Sortate: \(RO.count(moved.count, "fișier", "fișiere"))"
+            if toCompanies > 0 { line += ", din care \(toCompanies) la firme" }
+            lines.append(line + ".")
+        }
+        if !proposals.isEmpty {
+            lines.append("De aprobat (mod de probă): \(RO.count(proposals.count, "mutare", "mutări")).")
+        }
+        var check: [String] = []
+        if !duplicateGroups.isEmpty { check.append(RO.count(duplicateGroups.count, "dublură", "dubluri")) }
+        if oldVersionCount > 0 { check.append(RO.count(oldVersionCount, "versiune veche", "versiuni vechi")) }
+        if !oldScreenshots.isEmpty { check.append(RO.count(oldScreenshots.count, "captură veche", "capturi vechi")) }
+        if !oldInstallers.isEmpty { check.append(RO.count(oldInstallers.count, "installer vechi", "installere vechi")) }
+        if !check.isEmpty {
+            lines.append("De verificat: " + check.joined(separator: ", ") + ".")
+        }
+        guard !lines.isEmpty else { return }
+        let tab: MainTab = !proposals.isEmpty ? .folders : (check.isEmpty ? .history : .cleanup)
+        InstallerNotifier.shared.notifyInfo(id: "sortator-summary-" + today,
+                                            title: "Sortator azi",
+                                            body: lines.joined(separator: " "),
+                                            tab: tab)
+    }
+
+    // MARK: Mod de probă
+
+    private func recordProposal(_ proposal: ProposedMove) {
+        proposals.removeAll { $0.sourcePath == proposal.sourcePath }
+        proposals.insert(proposal, at: 0)
+        if proposals.count > 2000 {
+            proposals.removeLast(proposals.count - 2000)
+        }
+        saveProposals()
+        statusMessage = "Propunere: „\(proposal.fileName)” → \(PathDisplay.short(proposal.destinationFolderPath))"
+    }
+
+    private func saveProposals() {
+        Storage.save(proposals, to: Self.proposalsFile)
+    }
+
+    /// Propunerile ale căror fișiere mai sunt pe loc (cele mutate sau șterse între timp dispar din listă).
+    func pruneProposals() {
+        let before = proposals.count
+        proposals.removeAll { !FileManager.default.fileExists(atPath: $0.sourcePath) }
+        if proposals.count != before { saveProposals() }
+    }
+
+    func approveProposals(_ ids: Set<UUID>, completion: @escaping @MainActor (Int, [String]) -> Void) {
+        let chosen = proposals.filter { ids.contains($0.id) }
+        guard !chosen.isEmpty else { return }
+        engine.execute(chosen.map { $0.planned }) { count, errors in
+            Task { @MainActor in
+                let state = AppState.shared
+                state.proposals.removeAll { ids.contains($0.id) }
+                state.saveProposals()
+                completion(count, errors)
+            }
+        }
+    }
+
+    /// Respinse: fișierele rămân unde sunt și nu mai sunt propuse.
+    func rejectProposals(_ ids: Set<UUID>) {
+        proposals.removeAll { ids.contains($0.id) }
+        saveProposals()
+    }
+
+    func endTrial(_ id: UUID) {
+        guard let index = config.folders.firstIndex(where: { $0.id == id }) else { return }
+        config.folders[index].trialUntil = nil
+    }
+
+    func startTrial(_ id: UUID) {
+        guard let index = config.folders.firstIndex(where: { $0.id == id }) else { return }
+        config.folders[index].trialUntil = Date().addingTimeInterval(Double(max(1, config.settings.trialDays)) * 86_400)
     }
 
     /// Curățenia lucrează doar în folderele Sortator și în rădăcina folderelor urmărite.
@@ -253,6 +426,11 @@ final class AppState: ObservableObject {
             return files.count > 1 ? DuplicateGroup(size: group.size, files: files) : nil
         }
         oldInstallers = oldInstallers.filter { !gone.contains($0.url.path) }
+        oldScreenshots = oldScreenshots.filter { !gone.contains($0.url.path) }
+        versionGroups = versionGroups.compactMap { group in
+            let files = group.files.filter { !gone.contains($0.url.path) }
+            return files.count > 1 ? VersionGroup(key: group.key, files: files) : nil
+        }
         statusMessage = "Am mutat \(RO.count(trashed.count, "fișier", "fișiere")) la coș"
         if !errors.isEmpty {
             showAlert("Unele fișiere nu au putut fi mutate la coș", errors.prefix(10).joined(separator: "\n"))
@@ -593,7 +771,12 @@ final class AppState: ObservableObject {
             return
         }
         guard !config.folders.contains(where: { $0.path == path }) else { return }
-        config.folders.append(WatchedFolder(path: path))
+        var folder = WatchedFolder(path: path)
+        // Folder nou: în primele zile doar propune mutările, tu le aprobi.
+        if config.settings.trialDays > 0 {
+            folder.trialUntil = Date().addingTimeInterval(Double(config.settings.trialDays) * 86_400)
+        }
+        config.folders.append(folder)
     }
 
     func removeFolder(_ id: UUID) {

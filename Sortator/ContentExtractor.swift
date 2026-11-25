@@ -26,6 +26,10 @@ final class ContentExtractor {
     }
 
     func extract(_ url: URL) -> ExtractedText {
+        // Fișier doar în iCloud: citirea l-ar descărca. Îl sortăm doar după nume și extensie.
+        if ICloud.isNotDownloaded(url) {
+            return ExtractedText(text: "", method: "doar în iCloud (nedescărcat) — sortat după nume și extensie")
+        }
         let ext = url.pathExtension.lowercased()
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
 

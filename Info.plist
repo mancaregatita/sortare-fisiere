@@ -14,5 +14,7 @@
 	<string>Sortator poate urmări foldere de pe discuri externe, dacă le alegi.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
 	<string>Sortator poate urmări foldere din rețea, dacă le alegi.</string>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>Sortator mută automat fișierele noi din iCloud Drive în subfoldere, după regulile tale.</string>
 </dict>
 </plist>

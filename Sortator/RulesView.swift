@@ -200,7 +200,7 @@ struct RuleEditor: View {
 
             Section {
                 HStack {
-                    TextField("Mută în", text: $rule.destination, prompt: Text("ex. Firme/{firma}/{tipdoc}"))
+                    TextField("Mută în", text: $rule.destination, prompt: Text("ex. Firme/{firma}/{an}/{tipdoc}"))
                     Button("Alege…") {
                         if let path = state.pickFolder() {
                             rule.destination = path
@@ -211,7 +211,7 @@ struct RuleEditor: View {
             } header: {
                 Text("Destinație")
             } footer: {
-                Text("Un subfolder al folderului urmărit sau o cale oriunde pe Mac (începe cu ~/ sau /). Poți folosi {tipdoc} (Facturi, Contracte, Bancă…), {firma}, {partener}, {an} și {luna} (din data documentului), {tip} (Imagini, Documente…) și {ext}. Redenumirea se face doar când aplicația recunoaște tipul documentului; altfel numele rămâne. Gol = fișierul rămâne pe loc: așa faci o excepție, pusă deasupra celorlalte reguli.")
+                Text("Un subfolder al folderului urmărit sau o cale oriunde pe Mac (începe cu ~/ sau /). Poți folosi {tipdoc} (Invoices, Contracts, Bank, Receipts, Certificates, Authorities, Other), {firma}, {partener}, {an} și {luna} (din data documentului), {tip} (Images, Documents…) și {ext}. Redenumirea se face doar când aplicația recunoaște tipul documentului; altfel numele rămâne. Gol = fișierul rămâne pe loc: așa faci o excepție, pusă deasupra celorlalte reguli.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -18,6 +18,10 @@ final class SortEngine {
     private var pending: [String: PendingInfo] = [:]
     private var evaluated: [String: Date] = [:]
     private var ignored: Set<String> = []
+    /// iCloud: documente pe care le-am cerut la descărcare ca să le citim (cale → când).
+    private var downloadRequested: [String: Date] = [:]
+    /// iCloud: fișiere mutate a căror copie locală o ștergem după un minut (cale → când, încercări).
+    private var pendingEvictions: [String: (since: Date, attempts: Int)] = [:]
 
     private struct PendingInfo {
         var size: Int64
@@ -107,6 +111,8 @@ final class SortEngine {
             lastFullScan = now
             syncWatchers()
             pruneIgnored()
+            ensureKeepFolders()
+            runEvictions()
         }
         for folder in activeFolders {
             scan(folder)
@@ -114,17 +120,22 @@ final class SortEngine {
     }
 
     private func scan(_ folder: WatchedFolder) {
-        let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey, .addedToDirectoryDateKey, .creationDateKey]
+        let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isPackageKey, .fileSizeKey, .contentModificationDateKey, .addedToDirectoryDateKey, .creationDateKey]
         guard let items = try? fm.contentsOfDirectory(at: folder.url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return }
         let names = Set(items.map { $0.lastPathComponent })
         let now = Date()
         let delay = max(1.0, config.settings.delaySeconds)
+        let inICloud = ICloud.isInDrive(folder.path)
+        var abletonRunning: Bool?
         var present = Set<String>()
 
         for url in items {
             let name = url.lastPathComponent
             guard Self.isCandidateName(name, siblings: names) else { continue }
-            guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true else { continue }
+            guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
+            let ext = url.pathExtension.lowercased()
+            let kind = Self.itemKind(url, values: values)
+            guard kind != .ignore else { continue }
             let path = url.path
             present.insert(path)
             if ignored.contains(path) { continue }
@@ -132,10 +143,40 @@ final class SortEngine {
             let added = values.addedToDirectoryDate ?? values.creationDate ?? .distantPast
             if added < folder.activeSince { continue }
 
+            // Ableton: proiectele și fișierele .als se mută doar când Ableton e închis.
+            if kind == .abletonProject || Ableton.fileExtensions.contains(ext) {
+                if abletonRunning == nil { abletonRunning = Ableton.isRunning }
+                if abletonRunning == true {
+                    pending[path] = nil
+                    continue
+                }
+            }
+
             let size = Int64(values.fileSize ?? 0)
             let modified = values.contentModificationDate ?? .distantPast
             let key = Self.evaluationKey(path: path, size: size, modified: modified)
             if evaluated[key] != nil { continue }
+
+            if inICloud && kind == .file {
+                // Fișier care încă vine din iCloud (ex. pus de pe laptop): așteptăm să se termine.
+                if ICloud.isDownloading(url) {
+                    pending[path] = PendingInfo(size: size, modified: modified, lastChange: now)
+                    continue
+                }
+                // Document doar în cloud: îl descărcăm ca să-l putem citi (cel mult 10 minute de așteptare).
+                if config.settings.downloadDocumentsToRead,
+                   Self.contentExtensions.contains(ext),
+                   size <= Self.downloadLimit(for: ext),
+                   ICloud.isNotDownloaded(url) {
+                    if let requested = downloadRequested[path] {
+                        if now.timeIntervalSince(requested) < 600 { continue }
+                    } else {
+                        downloadRequested[path] = now
+                        ICloud.startDownloading(url)
+                        continue
+                    }
+                }
+            }
 
             guard var info = pending[path] else {
                 pending[path] = PendingInfo(size: size, modified: modified, lastChange: now)
@@ -154,12 +195,100 @@ final class SortEngine {
             guard now.timeIntervalSince(info.lastChange) >= wait,
                   modifiedAge >= wait || modifiedAge < -60 else { continue }
             pending[path] = nil
-            process(url, in: folder, key: key)
+            downloadRequested[path] = nil
+            if kind == .abletonProject {
+                processAbletonProject(url, in: folder, key: key)
+            } else {
+                process(url, in: folder, key: key)
+            }
         }
 
         let prefix = folder.url.standardizedFileURL.path + "/"
         for path in pending.keys where path.hasPrefix(prefix) && !present.contains(path) {
             pending[path] = nil
+        }
+        for path in downloadRequested.keys where path.hasPrefix(prefix) && !present.contains(path) {
+            downloadRequested[path] = nil
+        }
+    }
+
+    enum ItemKind {
+        case file, abletonProject, ignore
+    }
+
+    /// Fișiere normale și documente Pages/Numbers/Keynote se sortează; proiectele Ableton se mută întregi;
+    /// orice alt folder (repo-uri, proiecte, Keep, folderele Sortator) rămâne neatins.
+    static func itemKind(_ url: URL, values: URLResourceValues) -> ItemKind {
+        let ext = url.pathExtension.lowercased()
+        if values.isRegularFile == true { return .file }
+        if values.isPackage == true {
+            return DocumentPackages.extensions.contains(ext) ? .file : .ignore
+        }
+        if values.isDirectory == true,
+           !ManagedFolders.untouchable.contains(url.lastPathComponent),
+           Ableton.isProjectFolder(url) {
+            return .abletonProject
+        }
+        return .ignore
+    }
+
+    /// Documentele din care se citește conținutul (pentru firmă, tip, număr).
+    static let contentExtensions: Set<String> = PartyExtractor.documentExtensions
+
+    static func downloadLimit(for ext: String) -> Int64 {
+        ext == "zip" ? 30_000_000 : 100_000_000
+    }
+
+    private func processAbletonProject(_ url: URL, in folder: WatchedFolder, key: String) {
+        let destinationFolder = folder.url.appendingPathComponent(ManagedFolders.ableton, isDirectory: true)
+        if Exclusions.isExcluded(destinationFolder.path, excluded: config.excludedFolders) {
+            markEvaluated(key)
+            return
+        }
+        do {
+            let target = try moveFile(url, into: destinationFolder, name: url.lastPathComponent)
+            onMoved?(HistoryEntry(
+                date: Date(),
+                fileName: url.lastPathComponent,
+                fromPath: url.path,
+                toPath: target.path,
+                ruleName: "Proiect Ableton"
+            ))
+            scheduleEviction(target)
+        } catch {
+            markEvaluated(key)
+            onStatus?("Nu am putut muta proiectul „\(url.lastPathComponent)”: \(error.localizedDescription)")
+        }
+    }
+
+    /// Creează folderul Keep în fiecare folder urmărit (acolo nu se atinge nimic).
+    private func ensureKeepFolders() {
+        for folder in activeFolders where fm.fileExists(atPath: folder.path) {
+            let keep = folder.url.appendingPathComponent(ManagedFolders.keep, isDirectory: true)
+            if !fm.fileExists(atPath: keep.path) {
+                try? fm.createDirectory(at: keep, withIntermediateDirectories: true)
+            }
+        }
+    }
+
+    /// iCloud: după mutare, copia locală se șterge (fișierul rămâne în iCloud).
+    private func scheduleEviction(_ url: URL) {
+        guard config.settings.freeSpaceAfterSorting, ICloud.isInDrive(url.path) else { return }
+        pendingEvictions[url.path] = (since: Date(), attempts: 0)
+    }
+
+    private func runEvictions() {
+        let now = Date()
+        for (path, entry) in pendingEvictions where now.timeIntervalSince(entry.since) >= 60 {
+            guard fm.fileExists(atPath: path) else {
+                pendingEvictions[path] = nil
+                continue
+            }
+            if ICloud.evict(URL(fileURLWithPath: path)) || entry.attempts >= 20 {
+                pendingEvictions[path] = nil
+            } else {
+                pendingEvictions[path] = (since: entry.since, attempts: entry.attempts + 1)
+            }
         }
     }
 
@@ -219,6 +348,7 @@ final class SortEngine {
                 ruleName: rule.name
             )
             onMoved?(entry)
+            scheduleEviction(target)
         } catch {
             markEvaluated(key)
             onStatus?("Nu am putut muta „\(url.lastPathComponent)”: \(error.localizedDescription)")
@@ -239,7 +369,7 @@ final class SortEngine {
             do {
                 try self.fm.createDirectory(at: folder, withIntermediateDirectories: true)
                 let target = Self.uniqueURL(in: folder, name: original.lastPathComponent, fileManager: self.fm)
-                try self.fm.moveItem(at: current, to: target)
+                try Self.coordinatedMove(current, to: target, fileManager: self.fm)
                 self.ignored.insert(target.path)
                 self.saveState()
                 completion(.success(target.path))
@@ -259,16 +389,31 @@ final class SortEngine {
                 completion([])
                 return
             }
-            let items = (try? self.fm.contentsOfDirectory(at: folder.url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])) ?? []
+            let keys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .isPackageKey]
+            let items = (try? self.fm.contentsOfDirectory(at: folder.url, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])) ?? []
             let names = Set(items.map { $0.lastPathComponent })
-            let files = items
-                .filter { url in
-                    guard Self.isCandidateName(url.lastPathComponent, siblings: names) else { return false }
-                    return (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            let abletonRunning = Ableton.isRunning
+            var files: [URL] = []
+            var projects: [URL] = []
+            for url in items where Self.isCandidateName(url.lastPathComponent, siblings: names) {
+                guard let values = try? url.resourceValues(forKeys: keys) else { continue }
+                switch Self.itemKind(url, values: values) {
+                case .file:
+                    if abletonRunning && Ableton.fileExtensions.contains(url.pathExtension.lowercased()) { continue }
+                    files.append(url)
+                case .abletonProject:
+                    if !abletonRunning { projects.append(url) }
+                case .ignore:
+                    break
                 }
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            }
+            files.sort { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
 
             var moves: [PlannedMove] = []
+            let abletonFolder = folder.url.appendingPathComponent(ManagedFolders.ableton, isDirectory: true)
+            for project in projects {
+                moves.append(PlannedMove(source: project, destinationFolder: abletonFolder, newName: project.lastPathComponent, ruleName: "Proiect Ableton"))
+            }
             progress(0, files.count)
             for (index, url) in files.enumerated() {
                 if token.isCancelled { break }
@@ -376,6 +521,7 @@ final class SortEngine {
                 do {
                     let target = try self.moveFile(move.source, into: move.destinationFolder, name: move.newName)
                     self.ignored.remove(move.source.path)
+                    self.scheduleEviction(target)
                     self.onMoved?(HistoryEntry(
                         date: Date(),
                         fileName: move.source.lastPathComponent,
@@ -391,6 +537,103 @@ final class SortEngine {
             self.saveState()
             completion(count, errors)
         }
+    }
+
+    // MARK: Mutarea folderelor vechi în structura nouă
+
+    /// Previzualizare: Imagini → Images, Documente/Tabele/Prezentări/XML → Documents, Arhive → Archives,
+    /// Instalare → Installers, Design/Fonturi → Other, Video → Videos și
+    /// Firme/<firmă>/Facturi → Firme/<firmă>/<an>/Invoices etc. Numele se traduc din numele existent,
+    /// fără să se deschidă fișierele (nu se descarcă nimic din iCloud).
+    func planLegacyMigration(completion: @escaping @Sendable ([PlannedMove], [URL]) -> Void) {
+        queue.async {
+            var moves: [PlannedMove] = []
+            var oldFolders: [URL] = []
+            let label = "Structura nouă"
+            let legacyTypeFolders = Dictionary(uniqueKeysWithValues: DefaultRules.legacyTypeFolders.map {
+                (TextNormalizer.fold($0.key), $0.value)
+            })
+
+            for folder in self.activeFolders {
+                for child in self.subfolders(of: folder.url) {
+                    let foldedName = TextNormalizer.fold(child.lastPathComponent)
+
+                    if let newName = legacyTypeFolders[foldedName] {
+                        let target = folder.url.appendingPathComponent(newName, isDirectory: true)
+                        for item in self.children(of: child) {
+                            var name = item.lastPathComponent
+                            if newName == "Documents", self.isFileLike(item),
+                               let translated = LegacyNames.translate(name) {
+                                name = translated.name
+                            }
+                            moves.append(PlannedMove(source: item, destinationFolder: target, newName: name, ruleName: label))
+                        }
+                        oldFolders.append(child)
+                    }
+
+                    if foldedName == TextNormalizer.fold(ManagedFolders.companies) {
+                        for company in self.subfolders(of: child) {
+                            for typeFolder in self.subfolders(of: company) {
+                                guard let newFolder = DocTypes.folder(forLegacyFolder: typeFolder.lastPathComponent) else { continue }
+                                for item in self.children(of: typeFolder) {
+                                    let translated = self.isFileLike(item) ? LegacyNames.translate(item.lastPathComponent) : nil
+                                    let year = translated?.year ?? self.yearOfModification(item)
+                                    let target = company
+                                        .appendingPathComponent(year, isDirectory: true)
+                                        .appendingPathComponent(newFolder, isDirectory: true)
+                                    moves.append(PlannedMove(source: item, destinationFolder: target,
+                                                             newName: translated?.name ?? item.lastPathComponent, ruleName: label))
+                                }
+                                oldFolders.append(typeFolder)
+                            }
+                        }
+                    }
+                }
+            }
+            moves.sort { $0.source.path.localizedStandardCompare($1.source.path) == .orderedAscending }
+            completion(moves, oldFolders)
+        }
+    }
+
+    /// Mută ce e bifat, apoi șterge folderele vechi rămase goale.
+    func executeMigration(_ moves: [PlannedMove], oldFolders: [URL], completion: @escaping @Sendable (Int, [String]) -> Void) {
+        execute(moves) { count, errors in
+            self.queue.async {
+                for folder in oldFolders where self.isEmptyFolder(folder) {
+                    try? self.fm.removeItem(at: folder)
+                }
+                completion(count, errors)
+            }
+        }
+    }
+
+    private func subfolders(of url: URL) -> [URL] {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey]
+        let items = (try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])) ?? []
+        return items.filter { item in
+            guard let values = try? item.resourceValues(forKeys: keys) else { return false }
+            return values.isDirectory == true && values.isPackage != true
+        }
+    }
+
+    private func children(of url: URL) -> [URL] {
+        let items = (try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+        return items.filter { Self.isCandidateName($0.lastPathComponent, siblings: []) }
+    }
+
+    private func isFileLike(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isPackageKey]) else { return false }
+        return values.isRegularFile == true || values.isPackage == true
+    }
+
+    private func yearOfModification(_ url: URL) -> String {
+        let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+        return String(Calendar.current.component(.year, from: date))
+    }
+
+    private func isEmptyFolder(_ url: URL) -> Bool {
+        guard let items = try? fm.contentsOfDirectory(atPath: url.path) else { return false }
+        return items.allSatisfy { $0 == ".DS_Store" || $0 == ".localized" || $0 == "Icon\r" }
     }
 
     /// Arată ce regulă s-ar aplica unui fișier și ce text a fost găsit în el. Nu mută nimic.
@@ -466,8 +709,28 @@ final class SortEngine {
     private func moveFile(_ source: URL, into folder: URL, name: String) throws -> URL {
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         let target = Self.uniqueURL(in: folder, name: name, fileManager: fm)
-        try fm.moveItem(at: source, to: target)
+        try Self.coordinatedMove(source, to: target, fileManager: fm)
         return target
+    }
+
+    /// Mutare anunțată sistemului (NSFileCoordinator): în iCloud evită copiile „nume 2” și conflictele.
+    static func coordinatedMove(_ source: URL, to target: URL, fileManager: FileManager) throws {
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordinationError: NSError?
+        var moveError: Error?
+        coordinator.coordinate(writingItemAt: source, options: .forMoving,
+                               writingItemAt: target, options: .forReplacing,
+                               error: &coordinationError) { from, to in
+            do {
+                coordinator.item(at: from, willMoveTo: to)
+                try fileManager.moveItem(at: from, to: to)
+                coordinator.item(at: from, didMoveTo: to)
+            } catch {
+                moveError = error
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        if let moveError { throw moveError }
     }
 
     private func markEvaluated(_ key: String) {
@@ -530,12 +793,12 @@ final class SortEngine {
         let parts = Calendar.current.dateComponents([.year, .month], from: info?.date ?? Date())
         let ext = file.pathExtension.lowercased()
         var t = template.trimmingCharacters(in: .whitespacesAndNewlines)
-        t = t.replacingOccurrences(of: "{firma}", with: Names.safeFileName(info?.company ?? "Fără firmă"))
-        t = t.replacingOccurrences(of: "{tipdoc}", with: info?.type?.folder ?? "Altele")
-        t = t.replacingOccurrences(of: "{partener}", with: Names.safeFileName(info?.partner ?? "Necunoscut"))
+        t = t.replacingOccurrences(of: "{firma}", with: Names.safeFileName(info?.company ?? "No company"))
+        t = t.replacingOccurrences(of: "{tipdoc}", with: info?.type?.folder ?? DocTypes.otherFolder)
+        t = t.replacingOccurrences(of: "{partener}", with: Names.safeFileName(info?.partner ?? "Unknown"))
         t = t.replacingOccurrences(of: "{an}", with: String(format: "%04ld", parts.year ?? 0))
         t = t.replacingOccurrences(of: "{luna}", with: String(format: "%02ld", parts.month ?? 0))
-        t = t.replacingOccurrences(of: "{ext}", with: ext.isEmpty ? "fara extensie" : ext.uppercased())
+        t = t.replacingOccurrences(of: "{ext}", with: ext.isEmpty ? "No extension" : ext.uppercased())
         t = t.replacingOccurrences(of: "{tip}", with: DefaultRules.category(forExtension: ext))
         if t.hasPrefix("~") {
             t = (t as NSString).expandingTildeInPath

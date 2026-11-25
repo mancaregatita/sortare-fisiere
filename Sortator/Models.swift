@@ -149,6 +149,12 @@ struct AppSettings: Codable, Hashable {
     var autoDuplicateScan: Bool = true
     var askAboutInstallers: Bool = true
     var installerDays: Int = 30
+    /// iCloud: după sortare, copia locală se șterge (fișierul rămâne în iCloud).
+    var freeSpaceAfterSorting: Bool = true
+    /// iCloud: documentele care trebuie citite se descarcă pe rând, apoi se eliberează.
+    var downloadDocumentsToRead: Bool = true
+    /// Notificare „Ai instalat X. Ștergi installerul?”.
+    var notifyAfterInstall: Bool = true
 
     init() {}
 
@@ -160,6 +166,9 @@ struct AppSettings: Codable, Hashable {
         autoDuplicateScan = try c.decodeIfPresent(Bool.self, forKey: .autoDuplicateScan) ?? d.autoDuplicateScan
         askAboutInstallers = try c.decodeIfPresent(Bool.self, forKey: .askAboutInstallers) ?? d.askAboutInstallers
         installerDays = try c.decodeIfPresent(Int.self, forKey: .installerDays) ?? d.installerDays
+        freeSpaceAfterSorting = try c.decodeIfPresent(Bool.self, forKey: .freeSpaceAfterSorting) ?? d.freeSpaceAfterSorting
+        downloadDocumentsToRead = try c.decodeIfPresent(Bool.self, forKey: .downloadDocumentsToRead) ?? d.downloadDocumentsToRead
+        notifyAfterInstall = try c.decodeIfPresent(Bool.self, forKey: .notifyAfterInstall) ?? d.notifyAfterInstall
         paused = try c.decodeIfPresent(Bool.self, forKey: .paused) ?? d.paused
         delaySeconds = try c.decodeIfPresent(Double.self, forKey: .delaySeconds) ?? d.delaySeconds
         readPDFText = try c.decodeIfPresent(Bool.self, forKey: .readPDFText) ?? d.readPDFText
@@ -178,10 +187,10 @@ struct AppConfig: Codable {
     /// Foldere pe care aplicația nu le atinge niciodată: nu ia fișiere din ele și nu pune fișiere în ele.
     var excludedFolders: [String] = AppConfig.defaultExcludedFolders
     var companies: [CompanyProfile] = DefaultRules.companies
-    /// 1 = prima versiune; 2 = redenumire + tip document.
+    /// 1 = prima versiune; 2 = redenumire + tip document; 3 = structura în engleză (Firme/<firmă>/<an>/<tip>).
     var version: Int = AppConfig.currentVersion
 
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     static let defaultExcludedFolders: [String] = [
         "/Applications",
@@ -231,6 +240,22 @@ struct AppConfig: Codable {
                     }
             }
         }
+        if c.version < 3 {
+            // Regulile inițiale pe tipuri (în română) se înlocuiesc cu cele noi, în engleză.
+            let legacyTypeRules = DefaultRules.legacyTypeRuleNames
+            c.rules.removeAll { rule in
+                legacyTypeRules.contains(rule.name) && rule.destination == rule.name
+            }
+            let existingNames = Set(c.rules.map { $0.name })
+            c.rules += DefaultRules.typeRules.filter { !existingNames.contains($0.name) }
+            // Firmele: Firme/<firmă>/{tipdoc} → Firme/<firmă>/{an}/{tipdoc}.
+            for index in c.rules.indices {
+                let destination = c.rules[index].destination
+                if destination.hasPrefix("Firme/") && destination.hasSuffix("/{tipdoc}") && !destination.contains("{an}") {
+                    c.rules[index].destination = String(destination.dropLast("/{tipdoc}".count)) + "/{an}/{tipdoc}"
+                }
+            }
+        }
         c.version = currentVersion
         return (c, true)
     }
@@ -245,9 +270,12 @@ enum Exclusions {
     /// Adevărat dacă `path` este unul dintre folderele excluse sau se află în interiorul lor.
     static func isExcluded(_ path: String, excluded: [String]) -> Bool {
         let p = URL(fileURLWithPath: path).standardizedFileURL.path
+        let inICloud = ICloud.isInDrive(p)
         for item in excluded {
             let e = expand(item)
             if e.isEmpty || e == "/" { continue }
+            // „~/Library” nu blochează iCloud Drive (care stă în ~/Library/Mobile Documents).
+            if inICloud && ICloud.drivePath.hasPrefix(e + "/") { continue }
             if p == e || p.hasPrefix(e + "/") { return true }
         }
         return false

@@ -3,46 +3,83 @@ import Foundation
 // MARK: - Tipuri de documente
 
 struct DocType: Hashable {
-    /// Cum apare în numele fișierului (singular).
+    /// Cum apare în numele fișierului (singular, în engleză).
     let name: String
-    /// Folderul folosit pentru {tipdoc} (plural).
+    /// Folderul folosit pentru {tipdoc} (Invoices, Contracts, Bank, Receipts, Certificates, Authorities, Other).
     let folder: String
+    /// Numele vechi, în română (pentru fișierele redenumite înainte și pentru AI).
+    let legacyName: String
+    /// Folderul vechi, în română (pentru mutarea folderelor vechi în structura nouă).
+    let legacyFolder: String
     /// Expresii căutate (fără diacritice, litere mici). Prima e cea mai sigură.
     let phrases: [String]
 }
 
 enum DocTypes {
-    static let invoice = DocType(name: "Factură", folder: "Facturi", phrases: ["factura fiscala", "factura", "invoice", "e factura"])
+    static let invoice = DocType(name: "Invoice", folder: "Invoices", legacyName: "Factură", legacyFolder: "Facturi",
+                                 phrases: ["factura fiscala", "factura", "invoice", "e factura"])
 
     /// Ordinea contează la egalitate: cele mai specifice sunt primele.
     static let all: [DocType] = [
-        DocType(name: "Proformă", folder: "Proforme", phrases: ["factura proforma", "proforma"]),
+        DocType(name: "Proforma", folder: "Invoices", legacyName: "Proformă", legacyFolder: "Proforme",
+                phrases: ["factura proforma", "proforma", "proforma invoice"]),
         invoice,
-        DocType(name: "Chitanță", folder: "Chitanțe", phrases: ["chitanta"]),
-        DocType(name: "Bon fiscal", folder: "Bonuri", phrases: ["bon fiscal"]),
-        DocType(name: "Aviz", folder: "Avize", phrases: ["aviz de insotire a marfii", "aviz de insotire"]),
-        DocType(name: "NIR", folder: "NIR", phrases: ["nota de receptie si constatare de diferente", "nota de receptie"]),
-        DocType(name: "Act adițional", folder: "Contracte", phrases: ["act aditional", "actul aditional"]),
-        DocType(name: "Contract", folder: "Contracte", phrases: ["contract de", "partile contractante", "obiectul contractului", "contractul", "contract"]),
-        DocType(name: "Extras de cont", folder: "Bancă", phrases: ["extras de cont", "sold initial", "sold final", "account statement"]),
-        DocType(name: "Ordin de plată", folder: "Bancă", phrases: ["ordin de plata"]),
-        DocType(name: "Ofertă", folder: "Oferte", phrases: ["oferta de pret", "oferta comerciala", "cotatie de pret", "oferta"]),
-        DocType(name: "Comandă", folder: "Comenzi", phrases: ["nota de comanda", "comanda de achizitie", "purchase order", "comanda"]),
-        DocType(name: "Somație", folder: "Somații", phrases: ["somatie", "somatia"]),
-        DocType(name: "Decizie", folder: "Decizii", phrases: ["decizie", "decizia"]),
-        DocType(name: "Proces-verbal", folder: "Procese-verbale", phrases: ["proces verbal", "procesul verbal"]),
-        DocType(name: "Notificare", folder: "Notificări", phrases: ["notificare", "instiintare"]),
-        DocType(name: "Declarație", folder: "Declarații", phrases: ["declaratie", "declaratia"]),
-        DocType(name: "Certificat", folder: "Certificate", phrases: ["certificat", "certificatul"]),
-        DocType(name: "Autorizație", folder: "Autorizații", phrases: ["autorizatie", "autorizatia"]),
-        DocType(name: "Adeverință", folder: "Adeverințe", phrases: ["adeverinta"]),
-        DocType(name: "Stat de plată", folder: "Salarii", phrases: ["stat de plata", "fluturas de salariu", "fluturas"]),
-        DocType(name: "Cerere", folder: "Cereri", phrases: ["cerere", "cererea"])
+        DocType(name: "Fiscal Receipt", folder: "Receipts", legacyName: "Bon fiscal", legacyFolder: "Bonuri",
+                phrases: ["bon fiscal", "fiscal receipt"]),
+        DocType(name: "Receipt", folder: "Receipts", legacyName: "Chitanță", legacyFolder: "Chitanțe",
+                phrases: ["chitanta", "receipt"]),
+        DocType(name: "Delivery Note", folder: "Other", legacyName: "Aviz", legacyFolder: "Avize",
+                phrases: ["aviz de insotire a marfii", "aviz de insotire", "delivery note"]),
+        DocType(name: "NIR", folder: "Other", legacyName: "NIR", legacyFolder: "NIR",
+                phrases: ["nota de receptie si constatare de diferente", "nota de receptie", "nir"]),
+        DocType(name: "Addendum", folder: "Contracts", legacyName: "Act adițional", legacyFolder: "Contracte",
+                phrases: ["act aditional", "actul aditional", "addendum"]),
+        DocType(name: "Contract", folder: "Contracts", legacyName: "Contract", legacyFolder: "Contracte",
+                phrases: ["contract de", "partile contractante", "obiectul contractului", "contractul", "contract"]),
+        DocType(name: "Bank Statement", folder: "Bank", legacyName: "Extras de cont", legacyFolder: "Bancă",
+                phrases: ["extras de cont", "sold initial", "sold final", "account statement", "bank statement"]),
+        DocType(name: "Payment Order", folder: "Bank", legacyName: "Ordin de plată", legacyFolder: "Bancă",
+                phrases: ["ordin de plata", "payment order"]),
+        DocType(name: "Offer", folder: "Other", legacyName: "Ofertă", legacyFolder: "Oferte",
+                phrases: ["oferta de pret", "oferta comerciala", "cotatie de pret", "oferta", "offer"]),
+        DocType(name: "Order", folder: "Other", legacyName: "Comandă", legacyFolder: "Comenzi",
+                phrases: ["nota de comanda", "comanda de achizitie", "purchase order", "comanda", "order"]),
+        DocType(name: "Summons", folder: "Authorities", legacyName: "Somație", legacyFolder: "Somații",
+                phrases: ["somatie", "somatia", "summons"]),
+        DocType(name: "Decision", folder: "Authorities", legacyName: "Decizie", legacyFolder: "Decizii",
+                phrases: ["decizie", "decizia", "decision"]),
+        DocType(name: "Minutes", folder: "Other", legacyName: "Proces-verbal", legacyFolder: "Procese-verbale",
+                phrases: ["proces verbal", "procesul verbal", "minutes"]),
+        DocType(name: "Notice", folder: "Authorities", legacyName: "Notificare", legacyFolder: "Notificări",
+                phrases: ["notificare", "instiintare", "notice"]),
+        DocType(name: "Declaration", folder: "Authorities", legacyName: "Declarație", legacyFolder: "Declarații",
+                phrases: ["declaratie", "declaratia", "declaration"]),
+        DocType(name: "Certificate", folder: "Certificates", legacyName: "Certificat", legacyFolder: "Certificate",
+                phrases: ["certificat", "certificatul", "certificate"]),
+        DocType(name: "Authorization", folder: "Certificates", legacyName: "Autorizație", legacyFolder: "Autorizații",
+                phrases: ["autorizatie", "autorizatia", "authorization"]),
+        DocType(name: "Attestation", folder: "Certificates", legacyName: "Adeverință", legacyFolder: "Adeverințe",
+                phrases: ["adeverinta", "attestation"]),
+        DocType(name: "Payroll", folder: "Other", legacyName: "Stat de plată", legacyFolder: "Salarii",
+                phrases: ["stat de plata", "fluturas de salariu", "fluturas", "payroll"]),
+        DocType(name: "Request", folder: "Other", legacyName: "Cerere", legacyFolder: "Cereri",
+                phrases: ["cerere", "cererea", "request"])
     ]
 
+    /// Folderul pentru documentele cu tip nerecunoscut.
+    static let otherFolder = "Other"
+
+    /// După numele în engleză sau în română (ex. de la AI-ul Apple).
     static func named(_ name: String) -> DocType? {
         let wanted = TextNormalizer.fold(name).trimmingCharacters(in: .whitespacesAndNewlines)
-        return all.first { TextNormalizer.fold($0.name) == wanted }
+        return all.first { TextNormalizer.fold($0.name) == wanted || TextNormalizer.fold($0.legacyName) == wanted }
+    }
+
+    /// Folderul nou pentru un folder vechi (ex. „Facturi” → „Invoices”, „Altele” → „Other”).
+    static func folder(forLegacyFolder legacy: String) -> String? {
+        let wanted = TextNormalizer.fold(legacy).trimmingCharacters(in: .whitespacesAndNewlines)
+        if wanted == "altele" { return otherFolder }
+        return all.first { TextNormalizer.fold($0.legacyFolder) == wanted }?.folder
     }
 
     /// Numele, începutul documentului și restul textului sunt deja normalizate (TextNormalizer.normalize).
@@ -101,7 +138,7 @@ struct DocumentInfo {
             parts.append(partner)
         }
         parts.append(dateString)
-        var base = Names.safeFileName(parts.joined(separator: " – "))
+        var base = Names.withoutDiacritics(Names.safeFileName(parts.joined(separator: " – ")))
         if base.count > 150 { base = String(base.prefix(150)).trimmingCharacters(in: .whitespaces) }
         return ext.isEmpty ? base : base + "." + ext
     }
@@ -473,6 +510,11 @@ enum Names {
             }.joined(separator: " ")
         }
         return s.isEmpty ? nil : s
+    }
+
+    /// „Ștefan Căruță” → „Stefan Caruta” (păstrează majusculele).
+    static func withoutDiacritics(_ s: String) -> String {
+        s.folding(options: [.diacriticInsensitive], locale: locale)
     }
 
     /// Scoate caracterele care nu au voie într-un nume de fișier pe Mac.

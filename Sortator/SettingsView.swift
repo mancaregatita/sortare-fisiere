@@ -28,7 +28,7 @@ struct SettingsView: View {
             Section("Redenumire și tipul documentului") {
                 Toggle("Redenumește documentele mutate (la regulile care au redenumirea bifată)", isOn: $state.config.settings.renameDocuments)
                 HStack {
-                    Text("Nume: Tip Număr – Partener – Dată (ex. Factură CHE 1234 – Furnizor – 2026-11-03)")
+                    Text("Nume: Tip Număr – Partener – Dată (ex. Invoice CHE 1234 – Furnizor – 2026-11-03)")
                         .foregroundStyle(.secondary)
                     Spacer()
                     Button("Redenumește documentele sortate…") {
@@ -42,8 +42,17 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Section("iCloud Drive") {
+                Toggle("Descarcă pe rând documentele doar din iCloud, ca să le citească (firmă, tip, număr)", isOn: $state.config.settings.downloadDocumentsToRead)
+                Toggle("După sortare, eliberează spațiul pe acest Mac (fișierul rămâne în iCloud și se descarcă când îl deschizi)", isOn: $state.config.settings.freeSpaceAfterSorting)
+                Text("Pozele, video-urile, arhivele, installerele și proiectele Ableton se mută fără să fie descărcate.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Curățenie") {
                 Toggle("Caută dubluri automat (de două ori pe zi)", isOn: $state.config.settings.autoDuplicateScan)
+                Toggle("Notificare după instalare: „Ai instalat X. Ștergi installerul?”", isOn: $state.config.settings.notifyAfterInstall)
                 Toggle("Întreabă-mă de installerele vechi (.dmg, .pkg)", isOn: $state.config.settings.askAboutInstallers)
                 Stepper(value: $state.config.settings.installerDays, in: 7...180, step: 1) {
                     Text("Installer vechi = mai vechi de \(state.config.settings.installerDays) de zile")

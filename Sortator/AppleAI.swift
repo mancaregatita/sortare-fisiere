@@ -49,7 +49,7 @@ enum AppleAI {
 @available(macOS 26.0, *)
 @Generable
 struct DocumentGuess {
-    @Guide(description: "The document type", .anyOf(["Factură", "Proformă", "Chitanță", "Bon fiscal", "Aviz", "NIR", "Act adițional", "Contract", "Extras de cont", "Ordin de plată", "Ofertă", "Comandă", "Somație", "Decizie", "Proces-verbal", "Notificare", "Declarație", "Certificat", "Autorizație", "Adeverință", "Stat de plată", "Cerere", "Altul"]))
+    @Guide(description: "The document type", .anyOf(["Invoice", "Proforma", "Receipt", "Fiscal Receipt", "Delivery Note", "NIR", "Addendum", "Contract", "Bank Statement", "Payment Order", "Offer", "Order", "Summons", "Decision", "Minutes", "Notice", "Declaration", "Certificate", "Authorization", "Attestation", "Payroll", "Request", "Other"]))
     let type: String
 
     @Guide(description: "Name of the other company or person on the document (supplier, client or contract party), without legal form like SRL or SA. Empty if unknown.")

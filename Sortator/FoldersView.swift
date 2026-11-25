@@ -5,6 +5,7 @@ struct FoldersView: View {
     @EnvironmentObject var state: AppState
     @State private var sortTarget: WatchedFolder?
     @State private var showRename = false
+    @State private var showMigration = false
 
     var body: some View {
         ScrollView {
@@ -23,13 +24,17 @@ struct FoldersView: View {
             RenameExistingSheet()
                 .environmentObject(state)
         }
+        .sheet(isPresented: $showMigration) {
+            MigrateLegacySheet()
+                .environmentObject(state)
+        }
     }
 
     private var watchedSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Foldere urmărite")
                 .font(.title2.weight(.semibold))
-            Text("Fișierele noi care apar aici sunt mutate automat în subfoldere, după reguli. Ce exista deja în folder rămâne neatins până apeși „Sortează ce există”. Subfolderele și aplicațiile (.app) nu sunt mutate niciodată.")
+            Text("Fișierele noi care apar aici sunt mutate automat în Firme, Images, Videos, Audio, Documents, Archives, Installers, Ableton Projects și Other. Ce exista deja rămâne neatins până apeși „Sortează ce există”. Folderele tale (repo-uri, proiecte) nu se mută niciodată, cu excepția proiectelor Ableton, mutate doar cu Ableton închis. Ce pui în Keep nu e atins niciodată.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -64,13 +69,26 @@ struct FoldersView: View {
                         state.addDownloads()
                     }
                 }
-                Spacer()
-                Button {
-                    showRename = true
-                } label: {
-                    Label("Redenumește documentele sortate…", systemImage: "character.cursor.ibeam")
+                if state.canAddICloudDrive {
+                    Button {
+                        state.addICloudDrive()
+                    } label: {
+                        Label("Adaugă iCloud Drive", systemImage: "icloud")
+                    }
                 }
-                .help("Dă numele Tip Număr – Partener – Dată documentelor deja sortate (cu previzualizare)")
+                Spacer()
+                Menu {
+                    Button("Mută folderele vechi în structura nouă…") {
+                        showMigration = true
+                    }
+                    Button("Redenumește documentele sortate…") {
+                        showRename = true
+                    }
+                } label: {
+                    Label("Reorganizare", systemImage: "arrow.triangle.branch")
+                }
+                .fixedSize()
+                .help("Mută folderele vechi (Imagini, Facturi, Bancă…) în structura nouă sau redenumește documentele deja sortate, cu previzualizare")
             }
         }
     }

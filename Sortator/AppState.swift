@@ -39,6 +39,8 @@ final class AppState: ObservableObject {
     private var mainWindow: NSWindow?
     private var windowDelegate: MainWindowDelegate?
     private var cleanupTimer: Timer?
+    private var installerTimer: Timer?
+    private static let notifiedInstallersFile = "installere-notificate.json"
     private var duplicateToken = CancelToken()
     private var companyScanToken = CancelToken()
     private static let discoveryFile = "firme-gasite.json"
@@ -90,6 +92,12 @@ final class AppState: ObservableObject {
             Task { @MainActor in AppState.shared.showMainWindow() }
         }
 
+        // Installere deschise: verificare la 10 minute (notificarea „Ai instalat X. Ștergi installerul?”).
+        InstallerNotifier.shared.setUp()
+        installerTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { _ in
+            Task { @MainActor in AppState.shared.checkOpenedInstallers() }
+        }
+
         // Curățenie: prima verificare la 2 minute după pornire, apoi o dată pe oră.
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
             Task { @MainActor in AppState.shared.periodicCleanup() }
@@ -97,6 +105,7 @@ final class AppState: ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 120 * 1_000_000_000)
             AppState.shared.periodicCleanup()
+            AppState.shared.checkOpenedInstallers()
         }
     }
 
@@ -113,8 +122,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    private var cleanupFolders: [WatchedFolder] {
-        config.folders.filter { $0.enabled }
+    /// Curățenia lucrează doar în folderele Sortator și în rădăcina folderelor urmărite.
+    private var cleanupScope: CleanupScope {
+        CleanupScope(roots: ManagedFolders.roots(config: config),
+                     topLevel: ManagedFolders.watchedRoots(config: config),
+                     excluded: config.excludedFolders)
     }
 
     func scanDuplicates() {
@@ -123,7 +135,7 @@ final class AppState: ObservableObject {
         duplicateScanProgress = "Pornesc căutarea…"
         let token = CancelToken()
         duplicateToken = token
-        cleanup.findDuplicates(folders: cleanupFolders, excluded: config.excludedFolders, token: token, progress: { text in
+        cleanup.findDuplicates(scope: cleanupScope, token: token, progress: { text in
             Task { @MainActor in AppState.shared.duplicateScanProgress = text }
         }, completion: { groups in
             Task { @MainActor in
@@ -146,7 +158,7 @@ final class AppState: ObservableObject {
         guard !installerScanRunning else { return }
         installerScanRunning = true
         let days = config.settings.installerDays
-        cleanup.findOldInstallers(folders: cleanupFolders, excluded: config.excludedFolders, days: days) { list in
+        cleanup.findOldInstallers(scope: cleanupScope, days: days) { list in
             Task { @MainActor in AppState.shared.installersFound(list, ask: ask) }
         }
     }
@@ -175,6 +187,55 @@ final class AppState: ObservableObject {
             showMainWindow(tab: .cleanup)
         default:
             UserDefaults.standard.set(Date().addingTimeInterval(7 * 86_400), forKey: Self.installerSnoozeKey)
+        }
+    }
+
+    // MARK: Installere deschise
+
+    func checkOpenedInstallers() {
+        guard config.settings.notifyAfterInstall, !config.settings.paused else { return }
+        cleanup.findOpenedInstallers(scope: cleanupScope) { list in
+            Task { @MainActor in AppState.shared.openedInstallersFound(list) }
+        }
+    }
+
+    private func openedInstallersFound(_ list: [OpenedInstaller]) {
+        var notified = Storage.load([String: Date].self, from: Self.notifiedInstallersFile) ?? [:]
+        let fresh = list.filter { installer in
+            let key = installer.url.path + "|" + String(Int(installer.openedAt.timeIntervalSince1970))
+            return notified[key] == nil && FileManager.default.fileExists(atPath: installer.url.path)
+        }
+        guard !fresh.isEmpty else { return }
+        for installer in fresh {
+            notified[installer.url.path + "|" + String(Int(installer.openedAt.timeIntervalSince1970))] = Date()
+        }
+        // Păstrăm doar ultimele 500.
+        if notified.count > 500 {
+            notified = Dictionary(uniqueKeysWithValues: notified.sorted { $0.value > $1.value }.prefix(500).map { ($0.key, $0.value) })
+        }
+        Storage.save(notified, to: Self.notifiedInstallersFile)
+        InstallerNotifier.shared.notify(fresh) { notAllowed in
+            Task { @MainActor in AppState.shared.askAboutOpenedInstallers(notAllowed) }
+        }
+    }
+
+    /// Dacă notificările nu sunt permise: aceeași întrebare, ca fereastră de dialog.
+    private func askAboutOpenedInstallers(_ list: [OpenedInstaller]) {
+        guard !list.isEmpty else { return }
+        let lines = list.prefix(8).map { item -> String in
+            if let app = item.installedApp {
+                return "• \(item.url.lastPathComponent) (ai instalat \(app))"
+            }
+            return "• \(item.url.lastPathComponent)"
+        }.joined(separator: "\n")
+        let alert = NSAlert()
+        alert.messageText = list.count == 1 ? "Ștergi installerul?" : "Ștergi installerele?"
+        alert.informativeText = "\(lines)\n\nSe mută la coș; le poți recupera de acolo."
+        alert.addButton(withTitle: "Mută la coș")
+        alert.addButton(withTitle: "Păstrează")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            moveToTrash(list.map { $0.url })
         }
     }
 
@@ -298,8 +359,7 @@ final class AppState: ObservableObject {
         companyScanProgress = "Adun documentele…"
         let token = CancelToken()
         companyScanToken = token
-        cleanup.scanCompanies(folders: cleanupFolders,
-                              excluded: config.excludedFolders,
+        cleanup.scanCompanies(scope: cleanupScope,
                               settings: config.settings,
                               limit: 1500,
                               token: token,
@@ -453,6 +513,19 @@ final class AppState: ObservableObject {
     var hasDownloadsFolder: Bool {
         guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return true }
         return config.folders.contains { $0.path == downloads.path }
+    }
+
+    var canAddICloudDrive: Bool {
+        ICloud.isAvailable && !config.folders.contains { $0.path == ICloud.drivePath }
+    }
+
+    func addICloudDrive() {
+        guard ICloud.isAvailable else {
+            showAlert("iCloud Drive nu e pornit pe acest Mac",
+                      "Pornește-l din System Settings → numele tău → iCloud → Drive, apoi încearcă din nou.")
+            return
+        }
+        addWatchedFolder(ICloud.driveURL)
     }
 
     func addDownloads() {

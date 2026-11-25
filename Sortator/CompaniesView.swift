@@ -20,7 +20,7 @@ struct CompaniesView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Firme găsite în documente")
                 .font(.title2.weight(.semibold))
-            Text("Sortator citește CUI-urile (verificate cu cifra de control) și numele firmelor din facturi, contracte și e-Factura. Firmele tale apar pe aproape toate documentele, mai ales ca client. Confirmă-le cu „E firma mea” și se creează singură regula: Firme/<firmă>/<tip document>.")
+            Text("Sortator citește CUI-urile (verificate cu cifra de control) și numele firmelor din facturi, contracte și e-Factura. Firmele tale apar pe aproape toate documentele, mai ales ca client. Confirmă-le cu „E firma mea” și se creează singură regula: Firme/<firmă>/<an>/<tip document> (Invoices, Contracts, Bank…).")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
